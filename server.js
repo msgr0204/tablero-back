@@ -10,13 +10,7 @@ const port = process.env.PORT;
 connectDB();
 
 const app = express();
-const allowedOrigins = [
-  'https://pos.qitapps.com',
-  'http://localhost:5200',
-  'http://192.168.1.67:5200',
-  'http://localhost:5200',
-  'http://192.168.1.8:5200'
-];
+const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS.split(',');
 
 const corsOptions = {
   origin: allowedOrigins,
