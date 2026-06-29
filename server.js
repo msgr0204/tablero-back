@@ -5,7 +5,7 @@ const connectDB = require('./config/db');
 const authMiddleware = require('./middlewares/auth.middleware');
 const adminMiddleware = require('./middlewares/admin.middleware');
 
-const port = process.env.PORT;
+const port = process.env.PORT || 2406;
 
 connectDB();
 
