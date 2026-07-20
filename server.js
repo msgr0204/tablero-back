@@ -5,17 +5,42 @@ const connectDB = require('./config/db');
 const authMiddleware = require('./middlewares/auth.middleware');
 const adminMiddleware = require('./middlewares/admin.middleware');
 
-const port = process.env.PORT;
+const port = process.env.PORT || 2406;
 
 connectDB();
 
 const app = express();
-const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS.split(',');
+const defaultAllowedOrigins = [
+  'http://localhost:5200',
+  'http://127.0.0.1:5200',
+  'https://tablero-front.vercel.app',
+];
+
+function normalizeOrigin(origin) {
+  return origin
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/\/+$/, '');
+}
+
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || defaultAllowedOrigins.join(','))
+  .replace(/^['"]|['"]$/g, '')
+  .split(',')
+  .map(normalizeOrigin)
+  .filter(Boolean);
 
 const corsOptions = {
-  origin: allowedOrigins,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(normalizeOrigin(origin))) {
+      return callback(null, true);
+    }
+
+    console.warn(`Origen bloqueado por CORS: ${origin}`);
+    return callback(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
 app.use(cors(corsOptions));
