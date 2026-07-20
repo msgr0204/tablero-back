@@ -13,6 +13,9 @@ dist-ssr
 *.local
 .env
 
+# Respaldos de base de datos (contienen datos reales de tenants)
+backup-*/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -12,6 +12,7 @@ const requerimientoSchema = new mongoose.Schema({
   adjuntos: { type: [adjuntoSchema], default: [] },
   estado: { type: mongoose.Schema.Types.ObjectId, ref: 'Estado', default: null },
   prioridad: { type: mongoose.Schema.Types.ObjectId, ref: 'Prioridad', default: null },
+  tipo: { type: mongoose.Schema.Types.ObjectId, ref: 'Tipo', default: null },
   estado_anterior: { type: mongoose.Schema.Types.ObjectId, ref: 'Estado', default: null },
   prioridad_anterior: { type: mongoose.Schema.Types.ObjectId, ref: 'Prioridad', default: null },
   completado: { type: Boolean, default: false },

@@ -4,6 +4,7 @@ const Usuario = require('../models/Usuario');
 const Tenant = require('../models/Tenant');
 const Estado = require('../models/Estado');
 const Prioridad = require('../models/Prioridad');
+const Tipo = require('../models/Tipo');
 
 const SALT_ROUNDS = 10;
 
@@ -16,17 +17,25 @@ const ESTADOS_INICIALES = [
 ];
 
 const PRIORIDADES_INICIALES = [
-  { value: 'mejora', label: 'Mejora', color: '#57F0FE', orden: 0 },
-  { value: 'urgente', label: 'Urgente', color: '#B33E3F', orden: 1 },
-  { value: 'nueva_funcionalidad', label: 'Nueva funcionalidad', color: '#38BDF8', orden: 2 },
-  { value: 'error', label: 'Error', color: '#B33E3F', orden: 3 },
-  { value: 'solicitud_cliente', label: 'Solicitud cliente', color: '#38BDF8', orden: 4 },
+  { value: 'critica', label: 'Crítica', color: '#B33E3F', orden: 0 },
+  { value: 'alta', label: 'Alta', color: '#FB923C', orden: 1 },
+  { value: 'media', label: 'Media', color: '#FACC15', orden: 2 },
+  { value: 'baja', label: 'Baja', color: '#57F0FE', orden: 3 },
+];
+
+const TIPOS_INICIALES = [
+  { value: 'nueva_funcionalidad', label: 'Nueva funcionalidad', color: '#38BDF8', orden: 0 },
+  { value: 'mejora', label: 'Mejora', color: '#57F0FE', orden: 1 },
+  { value: 'error', label: 'Error', color: '#B33E3F', orden: 2 },
+  { value: 'solicitud_cliente', label: 'Solicitud cliente', color: '#A78BFA', orden: 3 },
+  { value: 'deuda_tecnica', label: 'Deuda técnica', color: '#FACC15', orden: 4 },
 ];
 
 async function crearCatalogoInicial(tenantId) {
   await Promise.all([
     Estado.insertMany(ESTADOS_INICIALES.map((e) => ({ ...e, tenant_id: tenantId }))),
     Prioridad.insertMany(PRIORIDADES_INICIALES.map((p) => ({ ...p, tenant_id: tenantId }))),
+    Tipo.insertMany(TIPOS_INICIALES.map((t) => ({ ...t, tenant_id: tenantId }))),
   ]);
 }
 

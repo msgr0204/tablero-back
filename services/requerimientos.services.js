@@ -9,6 +9,16 @@ const idsIguales = require('../utils/idsIguales');
 
 const MAXIMO_ADJUNTOS = 3;
 
+// La prioridad expresa urgencia: un requerimiento ya en estado de cierre no
+// tiene urgencia pendiente, así que se anula. El tipo (naturaleza del trabajo)
+// no depende del estado y se conserva intacto.
+async function resolverPrioridad(tenantId, estado, prioridad) {
+  if (!estado) return prioridad ?? null;
+  const estadoDoc = await Estado.findOne({ _id: estado, tenant_id: tenantId });
+  if (estadoDoc?.es_estado_final) return null;
+  return prioridad ?? null;
+}
+
 async function attachObservaciones(req) {
   const observaciones = await ObservacionRequerimiento.find({ requerimiento_id: req._id }).sort({ fecha: 1 });
   return { ...req.toObject(), observaciones };
@@ -19,7 +29,8 @@ async function create(tenantId, moduloId, payload) {
     throw new Error('El texto del requerimiento es obligatorio');
   }
   const total = await Requerimiento.countDocuments({ modulo_id: moduloId });
-  const requerimiento = await Requerimiento.create({ ...payload, tenant_id: tenantId, modulo_id: moduloId, orden: total });
+  const prioridad = await resolverPrioridad(tenantId, payload.estado, payload.prioridad);
+  const requerimiento = await Requerimiento.create({ ...payload, tenant_id: tenantId, modulo_id: moduloId, prioridad, orden: total });
 
   await notificacionesService.crear(
     tenantId,
@@ -36,15 +47,19 @@ async function update(tenantId, id, payload) {
   const anterior = await Requerimiento.findOne({ _id: id, tenant_id: tenantId });
   if (!anterior) return null;
 
-  if ('texto' in payload && !payload.texto.trim()) {
+  const data = { ...payload };
+  if ('texto' in data && !data.texto.trim()) {
     throw new Error('El texto del requerimiento es obligatorio');
   }
+  if ('estado' in data) {
+    data.prioridad = await resolverPrioridad(tenantId, data.estado, 'prioridad' in data ? data.prioridad : anterior.prioridad);
+  }
 
-  if (!hayCambiosReales(anterior, payload)) {
+  if (!hayCambiosReales(anterior, data)) {
     return attachObservaciones(anterior);
   }
 
-  const requerimiento = await Requerimiento.findOneAndUpdate({ _id: id, tenant_id: tenantId }, payload, { new: true });
+  const requerimiento = await Requerimiento.findOneAndUpdate({ _id: id, tenant_id: tenantId }, data, { new: true });
   if (!requerimiento) return null;
 
   if ('estado' in payload && !idsIguales(payload.estado, anterior.estado)) {
