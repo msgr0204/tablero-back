@@ -15,6 +15,7 @@ const requerimientoSchema = new mongoose.Schema({
   tipo: { type: mongoose.Schema.Types.ObjectId, ref: 'Tipo', default: null },
   estado_anterior: { type: mongoose.Schema.Types.ObjectId, ref: 'Estado', default: null },
   prioridad_anterior: { type: mongoose.Schema.Types.ObjectId, ref: 'Prioridad', default: null },
+  tipo_anterior: { type: mongoose.Schema.Types.ObjectId, ref: 'Tipo', default: null },
   completado: { type: Boolean, default: false },
   completado_at: { type: Date, default: null },
   fecha_entrega: { type: Date, default: null },

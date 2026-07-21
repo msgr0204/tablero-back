@@ -9,14 +9,15 @@ const idsIguales = require('../utils/idsIguales');
 
 const MAXIMO_ADJUNTOS = 3;
 
-// La prioridad expresa urgencia: un requerimiento ya en estado de cierre no
-// tiene urgencia pendiente, así que se anula. El tipo (naturaleza del trabajo)
-// no depende del estado y se conserva intacto.
-async function resolverPrioridad(tenantId, estado, prioridad) {
-  if (!estado) return prioridad ?? null;
+// Un requerimiento en estado de cierre ya no está en el flujo de trabajo, así
+// que pierde tanto la prioridad (urgencia) como el tipo (naturaleza). Devuelve
+// los valores ya resueltos para persistir; ambos quedan en null si el estado
+// es final.
+async function resolverCamposPorEstado(tenantId, estado, prioridad, tipo) {
+  if (!estado) return { prioridad: prioridad ?? null, tipo: tipo ?? null };
   const estadoDoc = await Estado.findOne({ _id: estado, tenant_id: tenantId });
-  if (estadoDoc?.es_estado_final) return null;
-  return prioridad ?? null;
+  if (estadoDoc?.es_estado_final) return { prioridad: null, tipo: null };
+  return { prioridad: prioridad ?? null, tipo: tipo ?? null };
 }
 
 async function attachObservaciones(req) {
@@ -29,8 +30,8 @@ async function create(tenantId, moduloId, payload) {
     throw new Error('El texto del requerimiento es obligatorio');
   }
   const total = await Requerimiento.countDocuments({ modulo_id: moduloId });
-  const prioridad = await resolverPrioridad(tenantId, payload.estado, payload.prioridad);
-  const requerimiento = await Requerimiento.create({ ...payload, tenant_id: tenantId, modulo_id: moduloId, prioridad, orden: total });
+  const { prioridad, tipo } = await resolverCamposPorEstado(tenantId, payload.estado, payload.prioridad, payload.tipo);
+  const requerimiento = await Requerimiento.create({ ...payload, tenant_id: tenantId, modulo_id: moduloId, prioridad, tipo, orden: total });
 
   await notificacionesService.crear(
     tenantId,
@@ -52,7 +53,14 @@ async function update(tenantId, id, payload) {
     throw new Error('El texto del requerimiento es obligatorio');
   }
   if ('estado' in data) {
-    data.prioridad = await resolverPrioridad(tenantId, data.estado, 'prioridad' in data ? data.prioridad : anterior.prioridad);
+    const resuelto = await resolverCamposPorEstado(
+      tenantId,
+      data.estado,
+      'prioridad' in data ? data.prioridad : anterior.prioridad,
+      'tipo' in data ? data.tipo : anterior.tipo
+    );
+    data.prioridad = resuelto.prioridad;
+    data.tipo = resuelto.tipo;
   }
 
   if (!hayCambiosReales(anterior, data)) {
@@ -119,15 +127,19 @@ async function toggleCompletado(tenantId, id, completado, estadoRestaurado) {
     const estadoFinal = await Estado.findOne({ tenant_id: tenantId, es_estado_final: true });
     requerimiento.estado_anterior = requerimiento.estado;
     requerimiento.prioridad_anterior = requerimiento.prioridad;
+    requerimiento.tipo_anterior = requerimiento.tipo;
     requerimiento.estado = estadoFinal?._id ?? requerimiento.estado;
     requerimiento.prioridad = null;
+    requerimiento.tipo = null;
     requerimiento.completado = true;
     requerimiento.completado_at = new Date();
   } else {
     requerimiento.estado = requerimiento.estado_anterior ?? estadoRestaurado ?? null;
     requerimiento.prioridad = requerimiento.prioridad_anterior ?? null;
+    requerimiento.tipo = requerimiento.tipo_anterior ?? null;
     requerimiento.estado_anterior = null;
     requerimiento.prioridad_anterior = null;
+    requerimiento.tipo_anterior = null;
     requerimiento.completado = false;
     requerimiento.completado_at = null;
   }
