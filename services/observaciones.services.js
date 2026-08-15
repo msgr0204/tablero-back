@@ -31,7 +31,22 @@ async function removeModuleObservation(tenantId, moduloId, obsId) {
   if (!modulo) {
     throw new Error('Módulo no encontrado');
   }
-  return ObservacionModulo.findByIdAndDelete(obsId);
+  return ObservacionModulo.findOneAndDelete({ _id: obsId, modulo_id: moduloId });
+}
+
+async function editModuleObservation(tenantId, moduloId, obsId, texto) {
+  if (!texto || !texto.trim()) {
+    throw new Error('El texto de la observación es obligatorio');
+  }
+  const modulo = await Modulo.findOne({ _id: moduloId, tenant_id: tenantId });
+  if (!modulo) {
+    throw new Error('Módulo no encontrado');
+  }
+  return ObservacionModulo.findOneAndUpdate(
+    { _id: obsId, modulo_id: moduloId },
+    { texto: texto.trim() },
+    { new: true }
+  );
 }
 
 async function addReqObservation(tenantId, requerimientoId, texto) {
@@ -61,7 +76,25 @@ async function removeReqObservation(tenantId, requerimientoId, obsId) {
   if (!requerimiento) {
     throw new Error('Requerimiento no encontrado');
   }
-  return ObservacionRequerimiento.findByIdAndDelete(obsId);
+  return ObservacionRequerimiento.findOneAndDelete({ _id: obsId, requerimiento_id: requerimientoId });
 }
 
-module.exports = { addModuleObservation, removeModuleObservation, addReqObservation, removeReqObservation };
+async function editReqObservation(tenantId, requerimientoId, obsId, texto) {
+  if (!texto || !texto.trim()) {
+    throw new Error('El texto de la observación es obligatorio');
+  }
+  const requerimiento = await Requerimiento.findOne({ _id: requerimientoId, tenant_id: tenantId });
+  if (!requerimiento) {
+    throw new Error('Requerimiento no encontrado');
+  }
+  return ObservacionRequerimiento.findOneAndUpdate(
+    { _id: obsId, requerimiento_id: requerimientoId },
+    { texto: texto.trim() },
+    { new: true }
+  );
+}
+
+module.exports = {
+  addModuleObservation, removeModuleObservation, editModuleObservation,
+  addReqObservation, removeReqObservation, editReqObservation,
+};

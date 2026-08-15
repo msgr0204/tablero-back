@@ -5,6 +5,8 @@ const notificacionesController = require('../controllers/notificaciones.controll
 router.get('/', notificacionesController.getAll);
 router.get('/historial', notificacionesController.getPaginado);
 router.get('/no-leidas/count', notificacionesController.contarNoLeidas);
+router.patch('/leer-todas', notificacionesController.marcarTodasLeidas);
+router.patch('/leer-varias', notificacionesController.marcarVariasLeidas);
 router.patch('/:id/leer', notificacionesController.marcarLeida);
 
 module.exports = router;

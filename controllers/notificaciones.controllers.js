@@ -40,4 +40,23 @@ async function marcarLeida(req, res) {
   }
 }
 
-module.exports = { getAll, getPaginado, contarNoLeidas, marcarLeida };
+async function marcarTodasLeidas(req, res) {
+  try {
+    const total = await notificacionesService.marcarTodasLeidas(req.tenant_id);
+    res.json({ total });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}
+
+async function marcarVariasLeidas(req, res) {
+  try {
+    const total = await notificacionesService.marcarVariasLeidas(req.tenant_id, req.body.ids);
+    res.json({ total });
+  } catch (error) {
+    if (error.name === 'CastError') return res.status(400).json({ message: 'ID de notificación inválido' });
+    res.status(400).json({ message: error.message });
+  }
+}
+
+module.exports = { getAll, getPaginado, contarNoLeidas, marcarLeida, marcarTodasLeidas, marcarVariasLeidas };

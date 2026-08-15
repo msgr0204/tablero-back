@@ -93,4 +93,23 @@ async function marcarLeida(tenantId, id) {
   return Notificacion.findOneAndUpdate({ _id: id, tenant_id: tenantId }, { leida: true }, { new: true });
 }
 
-module.exports = { crear, getAll, getPaginado, contarNoLeidas, marcarLeida };
+async function marcarTodasLeidas(tenantId) {
+  const { modifiedCount } = await Notificacion.updateMany(
+    { tenant_id: tenantId, leida: false },
+    { leida: true }
+  );
+  return modifiedCount;
+}
+
+async function marcarVariasLeidas(tenantId, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new Error('Debes indicar al menos una notificación');
+  }
+  const { modifiedCount } = await Notificacion.updateMany(
+    { _id: { $in: ids }, tenant_id: tenantId, leida: false },
+    { leida: true }
+  );
+  return modifiedCount;
+}
+
+module.exports = { crear, getAll, getPaginado, contarNoLeidas, marcarLeida, marcarTodasLeidas, marcarVariasLeidas };

@@ -17,6 +17,7 @@ router.delete('/:id', modulosController.remove);
 
 // Observaciones de módulo
 router.post('/:moduloId/observations', observacionesController.addModuleObservation);
+router.patch('/:moduloId/observations/:obsId', observacionesController.editModuleObservation);
 router.delete('/:moduloId/observations/:obsId', observacionesController.removeModuleObservation);
 
 // Requerimientos del módulo
@@ -30,6 +31,7 @@ router.delete('/requirements/:id/adjuntos/:adjuntoId', requerimientosController.
 
 // Observaciones de requerimiento
 router.post('/requirements/:reqId/observations', observacionesController.addReqObservation);
+router.patch('/requirements/:reqId/observations/:obsId', observacionesController.editReqObservation);
 router.delete('/requirements/:reqId/observations/:obsId', observacionesController.removeReqObservation);
 
 module.exports = router;
