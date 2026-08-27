@@ -2,21 +2,21 @@ const Tipo = require('../models/Tipo');
 const Requerimiento = require('../models/Requerimiento');
 const slugify = require('../utils/slugify');
 
-async function contarUso(tenantId, tipoId) {
-  return Requerimiento.countDocuments({ tenant_id: tenantId, tipo: tipoId });
+async function contarUso(ctx, tipoId) {
+  return Requerimiento.countDocuments({ ...ctx, tipo: tipoId });
 }
 
-async function getAll(tenantId) {
-  return Tipo.find({ tenant_id: tenantId }).sort({ orden: 1 });
+async function getAll(ctx) {
+  return Tipo.find({ ...ctx }).sort({ orden: 1 });
 }
 
-async function create(tenantId, { label, color }) {
+async function create(ctx, { label, color }) {
   if (!label || !label.trim()) {
     throw new Error('El nombre del tipo es obligatorio');
   }
-  const total = await Tipo.countDocuments({ tenant_id: tenantId });
+  const total = await Tipo.countDocuments({ ...ctx });
   return Tipo.create({
-    tenant_id: tenantId,
+    ...ctx,
     value: slugify(label),
     label: label.trim(),
     color,
@@ -24,7 +24,7 @@ async function create(tenantId, { label, color }) {
   });
 }
 
-async function update(tenantId, id, payload) {
+async function update(ctx, id, payload) {
   const data = { ...payload };
   if ('label' in data) {
     if (!data.label || !data.label.trim()) {
@@ -32,26 +32,26 @@ async function update(tenantId, id, payload) {
     }
     data.label = data.label.trim();
   }
-  return Tipo.findOneAndUpdate({ _id: id, tenant_id: tenantId }, data, { new: true });
+  return Tipo.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
 }
 
-async function remove(tenantId, id) {
-  const tipo = await Tipo.findOne({ _id: id, tenant_id: tenantId });
+async function remove(ctx, id) {
+  const tipo = await Tipo.findOne({ ...ctx, _id: id });
   if (!tipo) return null;
 
-  const usos = await contarUso(tenantId, tipo._id);
+  const usos = await contarUso(ctx, tipo._id);
   if (usos > 0) {
     throw new Error(`No se puede eliminar: este tipo está en uso por ${usos} registro(s)`);
   }
 
-  return Tipo.findByIdAndDelete(id);
+  return Tipo.findOneAndDelete({ ...ctx, _id: id });
 }
 
-async function reorder(tenantId, orderedIds) {
+async function reorder(ctx, orderedIds) {
   await Promise.all(
-    orderedIds.map((id, index) => Tipo.findOneAndUpdate({ _id: id, tenant_id: tenantId }, { orden: index }))
+    orderedIds.map((id, index) => Tipo.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
-  return getAll(tenantId);
+  return getAll(ctx);
 }
 
 module.exports = { getAll, create, update, remove, reorder };

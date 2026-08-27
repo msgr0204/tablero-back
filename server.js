@@ -4,6 +4,7 @@ require('dotenv').config();
 const connectDB = require('./config/db');
 const authMiddleware = require('./middlewares/auth.middleware');
 const adminMiddleware = require('./middlewares/admin.middleware');
+const ambitoMiddleware = require('./middlewares/ambito.middleware');
 
 const port = process.env.PORT || 2406;
 
@@ -40,7 +41,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Ambito'],
 };
 
 app.use(cors(corsOptions));
@@ -62,20 +63,22 @@ const tenantRoutes = require('./routes/tenant.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
 const metricasRoutes = require('./routes/metricas.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
+const tableroPersonalRoutes = require('./routes/tableroPersonal.routes');
 
 //Uso de rutas
 app.use("/api/auth", authRoutes);
 app.use("/api/plantillas-branding", plantillasBrandingRoutes);
-app.use("/api/estados", authMiddleware, estadosRoutes);
-app.use("/api/prioridades", authMiddleware, prioridadesRoutes);
-app.use("/api/tipos", authMiddleware, tiposRoutes);
-app.use("/api/categorias", authMiddleware, categoriasRoutes);
-app.use("/api/modulos", authMiddleware, modulosRoutes);
+app.use("/api/estados", authMiddleware, ambitoMiddleware, estadosRoutes);
+app.use("/api/prioridades", authMiddleware, ambitoMiddleware, prioridadesRoutes);
+app.use("/api/tipos", authMiddleware, ambitoMiddleware, tiposRoutes);
+app.use("/api/categorias", authMiddleware, ambitoMiddleware, categoriasRoutes);
+app.use("/api/modulos", authMiddleware, ambitoMiddleware, modulosRoutes);
 app.use("/api/notificaciones", authMiddleware, notificacionesRoutes);
 app.use("/api/tenant", authMiddleware, tenantRoutes);
 app.use("/api/dashboard", authMiddleware, dashboardRoutes);
 app.use("/api/metricas", authMiddleware, metricasRoutes);
 app.use("/api/usuarios", authMiddleware, adminMiddleware, usuariosRoutes);
+app.use("/api/tablero-personal", authMiddleware, tableroPersonalRoutes);
 
 
 app.get('/', (req, res) => {

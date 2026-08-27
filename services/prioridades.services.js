@@ -4,26 +4,26 @@ const Modulo = require('../models/Modulo');
 const Requerimiento = require('../models/Requerimiento');
 const slugify = require('../utils/slugify');
 
-async function contarUso(tenantId, prioridadId) {
+async function contarUso(ctx, prioridadId) {
   const [categorias, modulos, requerimientos] = await Promise.all([
-    Categoria.countDocuments({ tenant_id: tenantId, prioridad: prioridadId }),
-    Modulo.countDocuments({ tenant_id: tenantId, prioridad: prioridadId }),
-    Requerimiento.countDocuments({ tenant_id: tenantId, prioridad: prioridadId }),
+    Categoria.countDocuments({ ...ctx, prioridad: prioridadId }),
+    Modulo.countDocuments({ ...ctx, prioridad: prioridadId }),
+    Requerimiento.countDocuments({ ...ctx, prioridad: prioridadId }),
   ]);
   return categorias + modulos + requerimientos;
 }
 
-async function getAll(tenantId) {
-  return Prioridad.find({ tenant_id: tenantId }).sort({ orden: 1 });
+async function getAll(ctx) {
+  return Prioridad.find({ ...ctx }).sort({ orden: 1 });
 }
 
-async function create(tenantId, { label, color }) {
+async function create(ctx, { label, color }) {
   if (!label || !label.trim()) {
     throw new Error('El nombre de la prioridad es obligatorio');
   }
-  const total = await Prioridad.countDocuments({ tenant_id: tenantId });
+  const total = await Prioridad.countDocuments({ ...ctx });
   return Prioridad.create({
-    tenant_id: tenantId,
+    ...ctx,
     value: slugify(label),
     label: label.trim(),
     color,
@@ -31,7 +31,7 @@ async function create(tenantId, { label, color }) {
   });
 }
 
-async function update(tenantId, id, payload) {
+async function update(ctx, id, payload) {
   const data = { ...payload };
   if ('label' in data) {
     if (!data.label || !data.label.trim()) {
@@ -39,26 +39,26 @@ async function update(tenantId, id, payload) {
     }
     data.label = data.label.trim();
   }
-  return Prioridad.findOneAndUpdate({ _id: id, tenant_id: tenantId }, data, { new: true });
+  return Prioridad.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
 }
 
-async function remove(tenantId, id) {
-  const prioridad = await Prioridad.findOne({ _id: id, tenant_id: tenantId });
+async function remove(ctx, id) {
+  const prioridad = await Prioridad.findOne({ ...ctx, _id: id });
   if (!prioridad) return null;
 
-  const usos = await contarUso(tenantId, prioridad._id);
+  const usos = await contarUso(ctx, prioridad._id);
   if (usos > 0) {
     throw new Error(`No se puede eliminar: esta prioridad está en uso por ${usos} registro(s)`);
   }
 
-  return Prioridad.findByIdAndDelete(id);
+  return Prioridad.findOneAndDelete({ ...ctx, _id: id });
 }
 
-async function reorder(tenantId, orderedIds) {
+async function reorder(ctx, orderedIds) {
   await Promise.all(
-    orderedIds.map((id, index) => Prioridad.findOneAndUpdate({ _id: id, tenant_id: tenantId }, { orden: index }))
+    orderedIds.map((id, index) => Prioridad.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
-  return getAll(tenantId);
+  return getAll(ctx);
 }
 
 module.exports = { getAll, create, update, remove, reorder };

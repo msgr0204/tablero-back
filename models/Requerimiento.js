@@ -7,6 +7,8 @@ const adjuntoSchema = new mongoose.Schema({
 
 const requerimientoSchema = new mongoose.Schema({
   tenant_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
+  ambito: { type: String, enum: ['empresa', 'personal', 'equipo'], default: 'empresa' },
+  owner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', default: null },
   modulo_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Modulo', required: true },
   texto: { type: String, required: true, trim: true },
   adjuntos: { type: [adjuntoSchema], default: [] },
@@ -24,5 +26,7 @@ const requerimientoSchema = new mongoose.Schema({
   orden: { type: Number, default: 0 },
   eliminado_at: { type: Date, default: null },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
+
+requerimientoSchema.index({ tenant_id: 1, ambito: 1, owner_id: 1 });
 
 module.exports = mongoose.model('Requerimiento', requerimientoSchema);

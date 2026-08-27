@@ -8,15 +8,21 @@ const historialService = require('./historial.services');
 const hayCambiosReales = require('../utils/hayCambiosReales');
 const idsIguales = require('../utils/idsIguales');
 
-async function resolverPrioridad(tenantId, estado, prioridad) {
+// El tablero personal es silencioso por ahora: no genera notificaciones ni
+// historial (se cubre en su propio roadmap). Solo el ámbito empresa los emite.
+function esEmpresa(ctx) {
+  return ctx.ambito === 'empresa';
+}
+
+async function resolverPrioridad(ctx, estado, prioridad) {
   if (!estado) return prioridad ?? null;
-  const estadoDoc = await Estado.findOne({ _id: estado, tenant_id: tenantId });
+  const estadoDoc = await Estado.findOne({ ...ctx, _id: estado });
   if (estadoDoc?.es_estado_final) return null;
   return prioridad ?? null;
 }
 
-async function attachNested(modulo) {
-  const requerimientos = await Requerimiento.find({ modulo_id: modulo._id, eliminado_at: null }).sort({ orden: 1 });
+async function attachNested(ctx, modulo) {
+  const requerimientos = await Requerimiento.find({ ...ctx, modulo_id: modulo._id, eliminado_at: null }).sort({ orden: 1 });
   const requerimientosConObs = await Promise.all(
     requerimientos.map(async (r) => {
       const observaciones = await ObservacionRequerimiento.find({ requerimiento_id: r._id }).sort({ fecha: 1 });
@@ -27,38 +33,40 @@ async function attachNested(modulo) {
   return { ...modulo.toObject(), requerimientos: requerimientosConObs, observaciones };
 }
 
-async function getByCategory(tenantId, categoriaId) {
-  const modulos = await Modulo.find({ tenant_id: tenantId, categoria_id: categoriaId, eliminado_at: null }).sort({ orden: 1 });
-  return Promise.all(modulos.map(attachNested));
+async function getByCategory(ctx, categoriaId) {
+  const modulos = await Modulo.find({ ...ctx, categoria_id: categoriaId, eliminado_at: null }).sort({ orden: 1 });
+  return Promise.all(modulos.map((m) => attachNested(ctx, m)));
 }
 
-async function getById(tenantId, id) {
-  const modulo = await Modulo.findOne({ _id: id, tenant_id: tenantId, eliminado_at: null });
+async function getById(ctx, id) {
+  const modulo = await Modulo.findOne({ ...ctx, _id: id, eliminado_at: null });
   if (!modulo) return null;
-  return attachNested(modulo);
+  return attachNested(ctx, modulo);
 }
 
-async function create(tenantId, categoriaId, payload) {
+async function create(ctx, categoriaId, payload) {
   if (!payload.nombre || !payload.nombre.trim()) {
     throw new Error('El nombre del módulo es obligatorio');
   }
-  const total = await Modulo.countDocuments({ categoria_id: categoriaId });
-  const prioridad = await resolverPrioridad(tenantId, payload.estado, payload.prioridad);
-  const modulo = await Modulo.create({ ...payload, tenant_id: tenantId, prioridad, categoria_id: categoriaId, orden: total });
+  const total = await Modulo.countDocuments({ ...ctx, categoria_id: categoriaId });
+  const prioridad = await resolverPrioridad(ctx, payload.estado, payload.prioridad);
+  const modulo = await Modulo.create({ ...payload, ...ctx, prioridad, categoria_id: categoriaId, orden: total });
 
-  await notificacionesService.crear(
-    tenantId,
-    'modulo_creado',
-    `Se creó el módulo "${modulo.nombre}"`,
-    'Modulo',
-    modulo._id
-  );
+  if (esEmpresa(ctx)) {
+    await notificacionesService.crear(
+      ctx.tenant_id,
+      'modulo_creado',
+      `Se creó el módulo "${modulo.nombre}"`,
+      'Modulo',
+      modulo._id
+    );
+  }
 
-  return attachNested(modulo);
+  return attachNested(ctx, modulo);
 }
 
-async function updateDetail(tenantId, id, payload) {
-  const anterior = await Modulo.findOne({ _id: id, tenant_id: tenantId });
+async function updateDetail(ctx, id, payload) {
+  const anterior = await Modulo.findOne({ ...ctx, _id: id });
   if (!anterior) return null;
 
   const data = { ...payload };
@@ -66,62 +74,66 @@ async function updateDetail(tenantId, id, payload) {
     throw new Error('El nombre del módulo es obligatorio');
   }
   if ('estado' in data) {
-    data.prioridad = await resolverPrioridad(tenantId, data.estado, data.prioridad);
+    data.prioridad = await resolverPrioridad(ctx, data.estado, data.prioridad);
   }
 
   if (!hayCambiosReales(anterior, data)) {
-    return attachNested(anterior);
+    return attachNested(ctx, anterior);
   }
 
-  const modulo = await Modulo.findOneAndUpdate({ _id: id, tenant_id: tenantId }, data, { new: true });
+  const modulo = await Modulo.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
   if (!modulo) return null;
 
-  if ('estado' in data && !idsIguales(data.estado, anterior.estado)) {
-    await historialService.registrar(tenantId, 'Modulo', modulo._id, anterior.estado, modulo.estado);
-    await notificacionesService.crear(
-      tenantId,
-      'modulo_estado_cambiado',
-      `El módulo "${modulo.nombre}" cambió de estado`,
-      'Modulo',
-      modulo._id
-    );
-  } else {
-    await notificacionesService.crear(
-      tenantId,
-      'modulo_editado',
-      `Se editó el módulo "${modulo.nombre}"`,
-      'Modulo',
-      modulo._id
-    );
+  if (esEmpresa(ctx)) {
+    if ('estado' in data && !idsIguales(data.estado, anterior.estado)) {
+      await historialService.registrar(ctx.tenant_id, 'Modulo', modulo._id, anterior.estado, modulo.estado);
+      await notificacionesService.crear(
+        ctx.tenant_id,
+        'modulo_estado_cambiado',
+        `El módulo "${modulo.nombre}" cambió de estado`,
+        'Modulo',
+        modulo._id
+      );
+    } else {
+      await notificacionesService.crear(
+        ctx.tenant_id,
+        'modulo_editado',
+        `Se editó el módulo "${modulo.nombre}"`,
+        'Modulo',
+        modulo._id
+      );
+    }
   }
 
-  return attachNested(modulo);
+  return attachNested(ctx, modulo);
 }
 
-async function remove(tenantId, id) {
-  const modulo = await Modulo.findOne({ _id: id, tenant_id: tenantId });
+async function remove(ctx, id) {
+  const modulo = await Modulo.findOne({ ...ctx, _id: id });
   if (!modulo) return null;
 
   const eliminado_at = new Date();
-  await Requerimiento.updateMany({ modulo_id: id }, { eliminado_at });
-  const eliminado = await Modulo.findByIdAndUpdate(id, { eliminado_at }, { new: true });
+  await Requerimiento.updateMany({ ...ctx, modulo_id: id }, { eliminado_at });
+  const eliminado = await Modulo.findOneAndUpdate({ ...ctx, _id: id }, { eliminado_at }, { new: true });
 
-  await notificacionesService.crear(
-    tenantId,
-    'modulo_eliminado',
-    `Se eliminó el módulo "${modulo.nombre}"`,
-    'Modulo',
-    modulo._id
-  );
+  if (esEmpresa(ctx)) {
+    await notificacionesService.crear(
+      ctx.tenant_id,
+      'modulo_eliminado',
+      `Se eliminó el módulo "${modulo.nombre}"`,
+      'Modulo',
+      modulo._id
+    );
+  }
 
   return eliminado;
 }
 
-async function reorder(tenantId, categoriaId, orderedIds) {
+async function reorder(ctx, categoriaId, orderedIds) {
   await Promise.all(
-    orderedIds.map((id, index) => Modulo.findOneAndUpdate({ _id: id, tenant_id: tenantId }, { orden: index }))
+    orderedIds.map((id, index) => Modulo.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
-  return getByCategory(tenantId, categoriaId);
+  return getByCategory(ctx, categoriaId);
 }
 
 module.exports = { getByCategory, getById, create, updateDetail, remove, reorder };

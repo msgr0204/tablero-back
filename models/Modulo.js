@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 
 const moduloSchema = new mongoose.Schema({
   tenant_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
+  ambito: { type: String, enum: ['empresa', 'personal', 'equipo'], default: 'empresa' },
+  owner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', default: null },
   categoria_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Categoria', required: true },
   nombre: { type: String, required: true, trim: true },
   descripcion: { type: String, default: null },
@@ -13,5 +15,7 @@ const moduloSchema = new mongoose.Schema({
   orden: { type: Number, default: 0 },
   eliminado_at: { type: Date, default: null },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
+
+moduloSchema.index({ tenant_id: 1, ambito: 1, owner_id: 1 });
 
 module.exports = mongoose.model('Modulo', moduloSchema);

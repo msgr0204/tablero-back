@@ -14,6 +14,7 @@ async function getVencimientos(tenantId) {
 
   const requerimientos = await Requerimiento.find({
     tenant_id: tenantId,
+    ambito: 'empresa',
     eliminado_at: null,
     completado: false,
     fecha_entrega: { $ne: null, $lte: en7Dias },
@@ -48,6 +49,7 @@ async function getSinActividad(tenantId) {
 
   const requerimientos = await Requerimiento.find({
     tenant_id: tenantId,
+    ambito: 'empresa',
     eliminado_at: null,
     completado: false,
     updated_at: { $lte: limite },
@@ -80,16 +82,16 @@ async function getSinActividad(tenantId) {
 
 async function getSaludCatalogos(tenantId) {
   const [estados, prioridades] = await Promise.all([
-    Estado.find({ tenant_id: tenantId }).sort({ orden: 1 }),
-    Prioridad.find({ tenant_id: tenantId }).sort({ orden: 1 }),
+    Estado.find({ tenant_id: tenantId, ambito: 'empresa' }).sort({ orden: 1 }),
+    Prioridad.find({ tenant_id: tenantId, ambito: 'empresa' }).sort({ orden: 1 }),
   ]);
 
   const usosPorEstado = await Requerimiento.aggregate([
-    { $match: { tenant_id: tenantId, eliminado_at: null, estado: { $ne: null } } },
+    { $match: { tenant_id: tenantId, ambito: 'empresa', eliminado_at: null, estado: { $ne: null } } },
     { $group: { _id: '$estado', total: { $sum: 1 } } },
   ]);
   const usosPorPrioridad = await Requerimiento.aggregate([
-    { $match: { tenant_id: tenantId, eliminado_at: null, prioridad: { $ne: null } } },
+    { $match: { tenant_id: tenantId, ambito: 'empresa', eliminado_at: null, prioridad: { $ne: null } } },
     { $group: { _id: '$prioridad', total: { $sum: 1 } } },
   ]);
 
@@ -100,7 +102,7 @@ async function getSaludCatalogos(tenantId) {
     .filter((p) => !usosPorPrioridad.some((u) => u._id?.toString() === p._id.toString()))
     .map((p) => ({ id: p._id, label: p.label }));
 
-  const categorias = await Categoria.find({ tenant_id: tenantId, eliminado_at: null }).select('nombre');
+  const categorias = await Categoria.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).select('nombre');
   const categoriaIds = categorias.map((c) => c._id);
   const modulosPorCategoria = await Modulo.aggregate([
     { $match: { categoria_id: { $in: categoriaIds }, eliminado_at: null } },
@@ -110,7 +112,7 @@ async function getSaludCatalogos(tenantId) {
     .filter((c) => !modulosPorCategoria.some((m) => m._id.toString() === c._id.toString()))
     .map((c) => ({ id: c._id, nombre: c.nombre }));
 
-  const modulos = await Modulo.find({ tenant_id: tenantId, eliminado_at: null }).select('nombre');
+  const modulos = await Modulo.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).select('nombre');
   const moduloIds = modulos.map((m) => m._id);
   const requerimientosPorModulo = await Requerimiento.aggregate([
     { $match: { modulo_id: { $in: moduloIds }, eliminado_at: null } },
@@ -124,7 +126,7 @@ async function getSaludCatalogos(tenantId) {
 }
 
 async function getCalidadObservaciones(tenantId) {
-  const requerimientos = await Requerimiento.find({ tenant_id: tenantId, eliminado_at: null }).select('_id completado');
+  const requerimientos = await Requerimiento.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).select('_id completado');
   const requerimientoIds = requerimientos.map((r) => r._id);
   const completados = requerimientos.filter((r) => r.completado);
 

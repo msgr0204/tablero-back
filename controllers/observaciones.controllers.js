@@ -1,8 +1,9 @@
 const observacionesService = require('../services/observaciones.services');
+const { filtroAmbito } = require('../utils/filtroAmbito');
 
 async function addModuleObservation(req, res) {
   try {
-    const observacion = await observacionesService.addModuleObservation(req.tenant_id, req.params.moduloId, req.body.texto);
+    const observacion = await observacionesService.addModuleObservation(filtroAmbito(req), req.params.moduloId, req.body.texto);
     res.status(201).json(observacion);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de módulo inválido' });
@@ -12,7 +13,7 @@ async function addModuleObservation(req, res) {
 
 async function removeModuleObservation(req, res) {
   try {
-    await observacionesService.removeModuleObservation(req.tenant_id, req.params.moduloId, req.params.obsId);
+    await observacionesService.removeModuleObservation(filtroAmbito(req), req.params.moduloId, req.params.obsId);
     res.json({ message: 'Observación eliminada' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de observación inválido' });
@@ -22,7 +23,7 @@ async function removeModuleObservation(req, res) {
 
 async function editModuleObservation(req, res) {
   try {
-    const observacion = await observacionesService.editModuleObservation(req.tenant_id, req.params.moduloId, req.params.obsId, req.body.texto);
+    const observacion = await observacionesService.editModuleObservation(filtroAmbito(req), req.params.moduloId, req.params.obsId, req.body.texto);
     if (!observacion) return res.status(404).json({ message: 'Observación no encontrada' });
     res.json(observacion);
   } catch (error) {
@@ -33,7 +34,7 @@ async function editModuleObservation(req, res) {
 
 async function addReqObservation(req, res) {
   try {
-    const observacion = await observacionesService.addReqObservation(req.tenant_id, req.params.reqId, req.body.texto);
+    const observacion = await observacionesService.addReqObservation(filtroAmbito(req), req.params.reqId, req.body.texto);
     res.status(201).json(observacion);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de requerimiento inválido' });
@@ -43,7 +44,7 @@ async function addReqObservation(req, res) {
 
 async function removeReqObservation(req, res) {
   try {
-    await observacionesService.removeReqObservation(req.tenant_id, req.params.reqId, req.params.obsId);
+    await observacionesService.removeReqObservation(filtroAmbito(req), req.params.reqId, req.params.obsId);
     res.json({ message: 'Observación eliminada' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de observación inválido' });
@@ -53,7 +54,7 @@ async function removeReqObservation(req, res) {
 
 async function editReqObservation(req, res) {
   try {
-    const observacion = await observacionesService.editReqObservation(req.tenant_id, req.params.reqId, req.params.obsId, req.body.texto);
+    const observacion = await observacionesService.editReqObservation(filtroAmbito(req), req.params.reqId, req.params.obsId, req.body.texto);
     if (!observacion) return res.status(404).json({ message: 'Observación no encontrada' });
     res.json(observacion);
   } catch (error) {

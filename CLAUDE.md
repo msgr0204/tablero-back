@@ -40,6 +40,21 @@ async function create(req, res) {
 
 Cada colección de dominio lo lleva como campo obligatorio. Cada query de cada service lo usa como filtro — es la única frontera de seguridad real entre tenants, así que un `findOne({ _id: id })` sin `tenant_id` en el filtro es un bug de seguridad, no un detalle de estilo. Todas las rutas pasan por `authMiddleware` excepto `/api/auth` y `/api/plantillas-branding` (catálogo público, sin datos de tenant).
 
+## Ámbito: segunda frontera de seguridad (empresa vs tablero personal)
+
+Dentro de un mismo tenant conviven dos tableros: el de la **empresa** (compartido, lo de siempre) y el **personal** de cada usuario. Se modela con dos campos denormalizados en cada colección de dominio (`Categoria`, `Modulo`, `Requerimiento`, `Estado`, `Prioridad`, `Tipo`): `ambito` (`'empresa' | 'personal' | 'equipo'`, default `'empresa'`) y `owner_id` (ObjectId del usuario dueño cuando es personal, `null` en empresa). `'equipo'` está reservado para un roadmap futuro; hoy `ambito.middleware.js` solo acepta `empresa`/`personal`.
+
+El ámbito es una frontera de seguridad **igual de estricta que `tenant_id`**: un query de dominio sin filtro de ámbito filtra el tablero personal de un usuario a otro, o mezcla datos personales en el tablero de empresa. Reglas no negociables:
+
+- El ámbito se resuelve SIEMPRE en el servidor: `authMiddleware` pone `req.tenant_id`/`req.usuario_id`; `ambito.middleware.js` (montado después, en las rutas de dominio) lee el header `X-Ambito`, valida, y pone `req.ambito` + `req.owner_id` (= `req.usuario_id` si personal, nunca un valor del cliente).
+- Los controllers pasan `filtroAmbito(req)` (de `utils/filtroAmbito.js`) como PRIMER argumento del service — el objeto `ctx = { tenant_id, ambito, owner_id? }`. Reemplazó al viejo `tenantId` suelto en todos los services de dominio.
+- Cada query del service esparce el contexto: `Model.find({ ...ctx, <resto> })`, `findOne({ ...ctx, _id: id })`, etc. En `create`, `Model.create({ ...payload, ...ctx, ... })` — `...ctx` SIEMPRE después de `...payload` para que el cliente no pueda inyectar `ambito`/`owner_id`.
+- El tablero personal es **silencioso**: notificaciones e historial solo se emiten en empresa. Envolver toda llamada a `notificacionesService.crear` / `historialService.registrar` en `if (esEmpresa(ctx))` (helper local `ctx.ambito === 'empresa'`).
+- `dashboard.services.js` y `metricas.services.js` son SOLO de empresa: fuerzan `ambito: 'empresa'` en sus queries (no reciben `ctx`), para no contar datos personales en las métricas de la empresa.
+- Los catálogos personales se **clonan** de la empresa la primera vez que el usuario entra a su tablero personal (`services/clonarCatalogo.services.js#asegurarCatalogoPersonal`, disparado por `POST /api/tablero-personal/inicializar`). Copias independientes: editar el catálogo personal no toca el de empresa.
+- Índice compuesto `{ tenant_id, ambito, owner_id }` en cada colección de dominio (escalabilidad con muchos usuarios).
+- `ObservacionModulo`/`ObservacionRequerimiento` NO llevan ámbito propio: heredan el del padre. Su pertenencia se garantiza validando el módulo/requerimiento con `{ ...ctx, _id }` antes de tocar la observación.
+
 ## Identificadores: SIEMPRE `_id` real, nunca un slug de texto editable
 
 Bug real ya corregido y por qué importa: `Estado`/`Prioridad` tenían `value` (slug derivado de `label`, vía `utils/slugify.js`) que se regeneraba cada vez que el usuario renombraba el `label`. Como `Categoria.estado`/`Modulo.estado`/`Requerimiento.estado`/`prioridad` guardaban ese `value` como string, renombrar un estado dejaba huérfanos todos los registros que ya lo usaban (apuntaban a un slug que ya no existía en ningún lado).

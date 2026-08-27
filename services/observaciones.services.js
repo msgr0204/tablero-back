@@ -4,41 +4,52 @@ const ObservacionModulo = require('../models/ObservacionModulo');
 const ObservacionRequerimiento = require('../models/ObservacionRequerimiento');
 const notificacionesService = require('./notificaciones.services');
 
-async function addModuleObservation(tenantId, moduloId, texto) {
+// El tablero personal es silencioso por ahora: no genera notificaciones.
+function esEmpresa(ctx) {
+  return ctx.ambito === 'empresa';
+}
+
+// Las observaciones no llevan campo de ámbito propio: heredan el del padre. La
+// pertenencia se garantiza validando el módulo/requerimiento con el filtro de
+// ámbito completo, de modo que nunca se toca una observación de otro ámbito.
+
+async function addModuleObservation(ctx, moduloId, texto) {
   if (!texto || !texto.trim()) {
     throw new Error('El texto de la observación es obligatorio');
   }
-  const modulo = await Modulo.findOne({ _id: moduloId, tenant_id: tenantId });
+  const modulo = await Modulo.findOne({ ...ctx, _id: moduloId });
   if (!modulo) {
     throw new Error('Módulo no encontrado');
   }
 
   const observacion = await ObservacionModulo.create({ modulo_id: moduloId, texto });
 
-  await notificacionesService.crear(
-    tenantId,
-    'observacion_modulo_creada',
-    'Se agregó una observación a un módulo',
-    'ObservacionModulo',
-    observacion._id
-  );
+  if (esEmpresa(ctx)) {
+    await notificacionesService.crear(
+      ctx.tenant_id,
+      'observacion_modulo_creada',
+      'Se agregó una observación a un módulo',
+      'ObservacionModulo',
+      observacion._id
+    );
+  }
 
   return observacion;
 }
 
-async function removeModuleObservation(tenantId, moduloId, obsId) {
-  const modulo = await Modulo.findOne({ _id: moduloId, tenant_id: tenantId });
+async function removeModuleObservation(ctx, moduloId, obsId) {
+  const modulo = await Modulo.findOne({ ...ctx, _id: moduloId });
   if (!modulo) {
     throw new Error('Módulo no encontrado');
   }
   return ObservacionModulo.findOneAndDelete({ _id: obsId, modulo_id: moduloId });
 }
 
-async function editModuleObservation(tenantId, moduloId, obsId, texto) {
+async function editModuleObservation(ctx, moduloId, obsId, texto) {
   if (!texto || !texto.trim()) {
     throw new Error('El texto de la observación es obligatorio');
   }
-  const modulo = await Modulo.findOne({ _id: moduloId, tenant_id: tenantId });
+  const modulo = await Modulo.findOne({ ...ctx, _id: moduloId });
   if (!modulo) {
     throw new Error('Módulo no encontrado');
   }
@@ -49,41 +60,43 @@ async function editModuleObservation(tenantId, moduloId, obsId, texto) {
   );
 }
 
-async function addReqObservation(tenantId, requerimientoId, texto) {
+async function addReqObservation(ctx, requerimientoId, texto) {
   if (!texto || !texto.trim()) {
     throw new Error('El texto de la observación es obligatorio');
   }
-  const requerimiento = await Requerimiento.findOne({ _id: requerimientoId, tenant_id: tenantId });
+  const requerimiento = await Requerimiento.findOne({ ...ctx, _id: requerimientoId });
   if (!requerimiento) {
     throw new Error('Requerimiento no encontrado');
   }
 
   const observacion = await ObservacionRequerimiento.create({ requerimiento_id: requerimientoId, texto });
 
-  await notificacionesService.crear(
-    tenantId,
-    'observacion_requerimiento_creada',
-    'Se agregó una observación a un requerimiento',
-    'ObservacionRequerimiento',
-    observacion._id
-  );
+  if (esEmpresa(ctx)) {
+    await notificacionesService.crear(
+      ctx.tenant_id,
+      'observacion_requerimiento_creada',
+      'Se agregó una observación a un requerimiento',
+      'ObservacionRequerimiento',
+      observacion._id
+    );
+  }
 
   return observacion;
 }
 
-async function removeReqObservation(tenantId, requerimientoId, obsId) {
-  const requerimiento = await Requerimiento.findOne({ _id: requerimientoId, tenant_id: tenantId });
+async function removeReqObservation(ctx, requerimientoId, obsId) {
+  const requerimiento = await Requerimiento.findOne({ ...ctx, _id: requerimientoId });
   if (!requerimiento) {
     throw new Error('Requerimiento no encontrado');
   }
   return ObservacionRequerimiento.findOneAndDelete({ _id: obsId, requerimiento_id: requerimientoId });
 }
 
-async function editReqObservation(tenantId, requerimientoId, obsId, texto) {
+async function editReqObservation(ctx, requerimientoId, obsId, texto) {
   if (!texto || !texto.trim()) {
     throw new Error('El texto de la observación es obligatorio');
   }
-  const requerimiento = await Requerimiento.findOne({ _id: requerimientoId, tenant_id: tenantId });
+  const requerimiento = await Requerimiento.findOne({ ...ctx, _id: requerimientoId });
   if (!requerimiento) {
     throw new Error('Requerimiento no encontrado');
   }
