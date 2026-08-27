@@ -2,6 +2,14 @@ const Tipo = require('../models/Tipo');
 const Requerimiento = require('../models/Requerimiento');
 const slugify = require('../utils/slugify');
 
+// El catálogo del tablero personal solo lo gestiona su dueño; un colaborador lo
+// usa pero no lo edita. En empresa no aplica esta restricción.
+function exigirDueno(ctx) {
+  if (!ctx.puedeGestionarCatalogo()) {
+    throw new Error('Solo el dueño del tablero puede modificar su catálogo');
+  }
+}
+
 async function contarUso(ctx, tipoId) {
   return Requerimiento.countDocuments({ ...ctx, tipo: tipoId });
 }
@@ -11,6 +19,7 @@ async function getAll(ctx) {
 }
 
 async function create(ctx, { label, color }) {
+  exigirDueno(ctx);
   if (!label || !label.trim()) {
     throw new Error('El nombre del tipo es obligatorio');
   }
@@ -25,6 +34,7 @@ async function create(ctx, { label, color }) {
 }
 
 async function update(ctx, id, payload) {
+  exigirDueno(ctx);
   const data = { ...payload };
   if ('label' in data) {
     if (!data.label || !data.label.trim()) {
@@ -36,6 +46,7 @@ async function update(ctx, id, payload) {
 }
 
 async function remove(ctx, id) {
+  exigirDueno(ctx);
   const tipo = await Tipo.findOne({ ...ctx, _id: id });
   if (!tipo) return null;
 
@@ -48,6 +59,7 @@ async function remove(ctx, id) {
 }
 
 async function reorder(ctx, orderedIds) {
+  exigirDueno(ctx);
   await Promise.all(
     orderedIds.map((id, index) => Tipo.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );

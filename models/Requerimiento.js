@@ -23,6 +23,7 @@ const requerimientoSchema = new mongoose.Schema({
   fecha_entrega: { type: Date, default: null },
   dias_maximos: { type: Number, default: null },
   creado_por: { type: String, default: 'tu_usuario' },
+  creado_por_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', default: null },
   orden: { type: Number, default: 0 },
   eliminado_at: { type: Date, default: null },
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });

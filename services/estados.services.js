@@ -4,6 +4,14 @@ const Modulo = require('../models/Modulo');
 const Requerimiento = require('../models/Requerimiento');
 const slugify = require('../utils/slugify');
 
+// El catálogo del tablero personal solo lo gestiona su dueño; un colaborador lo
+// usa pero no lo edita. En empresa no aplica esta restricción.
+function exigirDueno(ctx) {
+  if (!ctx.puedeGestionarCatalogo()) {
+    throw new Error('Solo el dueño del tablero puede modificar su catálogo');
+  }
+}
+
 async function contarUso(ctx, estadoId) {
   const [categorias, modulos, requerimientos] = await Promise.all([
     Categoria.countDocuments({ ...ctx, estado: estadoId }),
@@ -18,6 +26,7 @@ async function getAll(ctx) {
 }
 
 async function create(ctx, { label, color, es_estado_final }) {
+  exigirDueno(ctx);
   if (!label || !label.trim()) {
     throw new Error('El nombre del estado es obligatorio');
   }
@@ -33,6 +42,7 @@ async function create(ctx, { label, color, es_estado_final }) {
 }
 
 async function update(ctx, id, payload) {
+  exigirDueno(ctx);
   const data = { ...payload };
   if ('label' in data) {
     if (!data.label || !data.label.trim()) {
@@ -44,6 +54,7 @@ async function update(ctx, id, payload) {
 }
 
 async function remove(ctx, id) {
+  exigirDueno(ctx);
   const estado = await Estado.findOne({ ...ctx, _id: id });
   if (!estado) return null;
 
@@ -61,6 +72,7 @@ async function remove(ctx, id) {
 }
 
 async function reorder(ctx, orderedIds) {
+  exigirDueno(ctx);
   await Promise.all(
     orderedIds.map((id, index) => Estado.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );

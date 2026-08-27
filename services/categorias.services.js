@@ -6,6 +6,7 @@ const notificacionesService = require('./notificaciones.services');
 const historialService = require('./historial.services');
 const hayCambiosReales = require('../utils/hayCambiosReales');
 const idsIguales = require('../utils/idsIguales');
+const { limpiarCamposProtegidos } = require('../utils/camposProtegidos');
 
 // El tablero personal es silencioso por ahora: no genera notificaciones ni
 // historial (se cubre en su propio roadmap). Solo el ámbito empresa los emite.
@@ -18,6 +19,15 @@ async function resolverPrioridad(ctx, estado, prioridad) {
   const estadoDoc = await Estado.findOne({ ...ctx, _id: estado });
   if (estadoDoc?.es_estado_final) return null;
   return prioridad ?? null;
+}
+
+// ¿El estado destino es un estado de cierre? Poner un ítem en estado final es
+// potestad solo del dueño del tablero (regla de permisos), así que hay que
+// detectarlo para bloquear a los colaboradores.
+async function esEstadoFinal(ctx, estadoId) {
+  if (!estadoId) return false;
+  const estadoDoc = await Estado.findOne({ ...ctx, _id: estadoId });
+  return !!estadoDoc?.es_estado_final;
 }
 
 async function withCounts(ctx, categorias) {
@@ -52,9 +62,12 @@ async function create(ctx, payload) {
   if (!payload.nombre || !payload.nombre.trim()) {
     throw new Error('El nombre de la categoría es obligatorio');
   }
+  if (await esEstadoFinal(ctx, payload.estado) && !ctx.puedeMarcarFinal()) {
+    throw new Error('Solo el dueño del tablero puede crear en estado de cierre');
+  }
   const total = await Categoria.countDocuments({ ...ctx });
   const prioridad = await resolverPrioridad(ctx, payload.estado, payload.prioridad);
-  const categoria = await Categoria.create({ ...payload, ...ctx, prioridad, orden: total });
+  const categoria = await Categoria.create({ ...payload, ...ctx, ...ctx.sello, prioridad, orden: total });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
@@ -73,11 +86,18 @@ async function update(ctx, id, payload) {
   const anterior = await Categoria.findOne({ ...ctx, _id: id });
   if (!anterior) return null;
 
-  const data = { ...payload };
+  if (!ctx.puedeModificar(anterior)) {
+    throw new Error('Solo quien creó esta categoría puede editarla');
+  }
+
+  const data = limpiarCamposProtegidos(payload);
   if ('nombre' in data && !data.nombre.trim()) {
     throw new Error('El nombre de la categoría es obligatorio');
   }
   if ('estado' in data) {
+    if (!idsIguales(data.estado, anterior.estado) && await esEstadoFinal(ctx, data.estado) && !ctx.puedeMarcarFinal()) {
+      throw new Error('Solo el dueño del tablero puede marcar como entregado');
+    }
     data.prioridad = await resolverPrioridad(ctx, data.estado, data.prioridad);
   }
 
@@ -116,6 +136,10 @@ async function remove(ctx, id) {
   const categoria = await Categoria.findOne({ ...ctx, _id: id });
   if (!categoria) return null;
 
+  if (!ctx.puedeModificar(categoria)) {
+    throw new Error('Solo quien creó esta categoría puede eliminarla');
+  }
+
   const modulos = await Modulo.find({ ...ctx, categoria_id: id }).select('_id');
   const moduloIds = modulos.map((m) => m._id);
 
@@ -141,6 +165,11 @@ async function remove(ctx, id) {
 }
 
 async function reorder(ctx, orderedIds) {
+  // Reordenar organiza el tablero completo (no un ítem propio): en un tablero
+  // personal compartido, solo el dueño reordena.
+  if (!ctx.puedeMarcarFinal()) {
+    throw new Error('Solo el dueño del tablero puede reordenar');
+  }
   await Promise.all(
     orderedIds.map((id, index) => Categoria.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );

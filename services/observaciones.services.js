@@ -22,7 +22,12 @@ async function addModuleObservation(ctx, moduloId, texto) {
     throw new Error('Módulo no encontrado');
   }
 
-  const observacion = await ObservacionModulo.create({ modulo_id: moduloId, texto });
+  const observacion = await ObservacionModulo.create({
+    modulo_id: moduloId,
+    texto,
+    creado_por: ctx.creado_por ?? null,
+    creado_por_id: ctx.sello.creado_por_id,
+  });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
@@ -69,7 +74,12 @@ async function addReqObservation(ctx, requerimientoId, texto) {
     throw new Error('Requerimiento no encontrado');
   }
 
-  const observacion = await ObservacionRequerimiento.create({ requerimiento_id: requerimientoId, texto });
+  const observacion = await ObservacionRequerimiento.create({
+    requerimiento_id: requerimientoId,
+    texto,
+    creado_por: ctx.creado_por ?? null,
+    creado_por_id: ctx.sello.creado_por_id,
+  });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(

@@ -41,7 +41,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Ambito'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Ambito', 'X-Owner-Id'],
 };
 
 app.use(cors(corsOptions));
@@ -64,6 +64,7 @@ const dashboardRoutes = require('./routes/dashboard.routes');
 const metricasRoutes = require('./routes/metricas.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const tableroPersonalRoutes = require('./routes/tableroPersonal.routes');
+const colaboradoresRoutes = require('./routes/colaboradores.routes');
 
 //Uso de rutas
 app.use("/api/auth", authRoutes);
@@ -79,6 +80,7 @@ app.use("/api/dashboard", authMiddleware, dashboardRoutes);
 app.use("/api/metricas", authMiddleware, metricasRoutes);
 app.use("/api/usuarios", authMiddleware, adminMiddleware, usuariosRoutes);
 app.use("/api/tablero-personal", authMiddleware, tableroPersonalRoutes);
+app.use("/api/colaboradores", authMiddleware, colaboradoresRoutes);
 
 
 app.get('/', (req, res) => {

@@ -1,4 +1,5 @@
 const Requerimiento = require('../models/Requerimiento');
+const Modulo = require('../models/Modulo');
 const ObservacionRequerimiento = require('../models/ObservacionRequerimiento');
 const Estado = require('../models/Estado');
 const notificacionesService = require('./notificaciones.services');
@@ -6,6 +7,7 @@ const historialService = require('./historial.services');
 const storageService = require('./storage.services');
 const hayCambiosReales = require('../utils/hayCambiosReales');
 const idsIguales = require('../utils/idsIguales');
+const { limpiarCamposProtegidos } = require('../utils/camposProtegidos');
 
 const MAXIMO_ADJUNTOS = 3;
 
@@ -26,6 +28,15 @@ async function resolverCamposPorEstado(ctx, estado, prioridad, tipo) {
   return { prioridad: prioridad ?? null, tipo: tipo ?? null };
 }
 
+// ¿El estado destino es un estado de cierre? Poner un ítem en estado final es
+// potestad solo del dueño del tablero (regla de permisos), así que hay que
+// detectarlo para bloquear a los colaboradores.
+async function esEstadoFinal(ctx, estadoId) {
+  if (!estadoId) return false;
+  const estadoDoc = await Estado.findOne({ ...ctx, _id: estadoId });
+  return !!estadoDoc?.es_estado_final;
+}
+
 async function attachObservaciones(req) {
   const observaciones = await ObservacionRequerimiento.find({ requerimiento_id: req._id }).sort({ fecha: 1 });
   return { ...req.toObject(), observaciones };
@@ -35,9 +46,21 @@ async function create(ctx, moduloId, payload) {
   if (!payload.texto || !payload.texto.trim()) {
     throw new Error('El texto del requerimiento es obligatorio');
   }
+  // La autoría se hereda hacia abajo: solo quien creó el módulo (o el dueño del
+  // tablero) puede crear requerimientos dentro de él.
+  const modulo = await Modulo.findOne({ ...ctx, _id: moduloId, eliminado_at: null });
+  if (!modulo) {
+    throw new Error('Módulo no encontrado');
+  }
+  if (!ctx.puedeModificar(modulo)) {
+    throw new Error('Solo quien creó este módulo puede agregarle requerimientos');
+  }
+  if (await esEstadoFinal(ctx, payload.estado) && !ctx.puedeMarcarFinal()) {
+    throw new Error('Solo el dueño del tablero puede crear en estado de cierre');
+  }
   const total = await Requerimiento.countDocuments({ ...ctx, modulo_id: moduloId });
   const { prioridad, tipo } = await resolverCamposPorEstado(ctx, payload.estado, payload.prioridad, payload.tipo);
-  const requerimiento = await Requerimiento.create({ ...payload, ...ctx, modulo_id: moduloId, prioridad, tipo, orden: total });
+  const requerimiento = await Requerimiento.create({ ...payload, ...ctx, ...ctx.sello, modulo_id: moduloId, prioridad, tipo, orden: total });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
@@ -56,11 +79,18 @@ async function update(ctx, id, payload) {
   const anterior = await Requerimiento.findOne({ ...ctx, _id: id });
   if (!anterior) return null;
 
-  const data = { ...payload };
+  if (!ctx.puedeModificar(anterior)) {
+    throw new Error('Solo quien creó este requerimiento puede editarlo');
+  }
+
+  const data = limpiarCamposProtegidos(payload);
   if ('texto' in data && !data.texto.trim()) {
     throw new Error('El texto del requerimiento es obligatorio');
   }
   if ('estado' in data) {
+    if (!idsIguales(data.estado, anterior.estado) && await esEstadoFinal(ctx, data.estado) && !ctx.puedeMarcarFinal()) {
+      throw new Error('Solo el dueño del tablero puede marcar como entregado');
+    }
     const resuelto = await resolverCamposPorEstado(
       ctx,
       data.estado,
@@ -106,6 +136,10 @@ async function remove(ctx, id) {
   const requerimiento = await Requerimiento.findOne({ ...ctx, _id: id });
   if (!requerimiento) return null;
 
+  if (!ctx.puedeModificar(requerimiento)) {
+    throw new Error('Solo quien creó este requerimiento puede eliminarlo');
+  }
+
   const eliminado = await Requerimiento.findOneAndUpdate({ ...ctx, _id: id }, { eliminado_at: new Date() }, { new: true });
 
   if (esEmpresa(ctx)) {
@@ -122,6 +156,9 @@ async function remove(ctx, id) {
 }
 
 async function reorder(ctx, moduloId, orderedIds) {
+  if (!ctx.puedeMarcarFinal()) {
+    throw new Error('Solo el dueño del tablero puede reordenar');
+  }
   await Promise.all(
     orderedIds.map((id, index) => Requerimiento.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
@@ -132,6 +169,12 @@ async function reorder(ctx, moduloId, orderedIds) {
 async function toggleCompletado(ctx, id, completado, estadoRestaurado) {
   const requerimiento = await Requerimiento.findOne({ ...ctx, _id: id });
   if (!requerimiento) return null;
+
+  // Completar/reabrir (marcar entregado) es potestad solo del dueño del tablero,
+  // aunque el requerimiento lo haya creado un colaborador.
+  if (!ctx.puedeMarcarFinal()) {
+    throw new Error('Solo el dueño del tablero puede completar o reabrir requerimientos');
+  }
 
   const estadoAntes = requerimiento.estado;
 

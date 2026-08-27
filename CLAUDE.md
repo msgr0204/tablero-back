@@ -55,6 +55,20 @@ El ámbito es una frontera de seguridad **igual de estricta que `tenant_id`**: u
 - Índice compuesto `{ tenant_id, ambito, owner_id }` en cada colección de dominio (escalabilidad con muchos usuarios).
 - `ObservacionModulo`/`ObservacionRequerimiento` NO llevan ámbito propio: heredan el del padre. Su pertenencia se garantiza validando el módulo/requerimiento con `{ ...ctx, _id }` antes de tocar la observación.
 
+## Colaboradores del tablero personal y permisos por autoría
+
+El dueño de un tablero personal comparte acceso directo (sin invitación) con usuarios de su tenant, vía `ColaboradorTablero` (`{ tenant_id, propietario_id, colaborador_id }`, muchos-a-muchos, unidireccional). Un colaborador entra al tablero de otro mandando `X-Owner-Id`; `ambito.middleware` valida el acceso (es dueño, o existe `ColaboradorTablero`) antes de setear `req.owner_id`, y distingue `req.actor_id` (quién opera, siempre el logueado) de `req.owner_id` (de quién es el tablero) + `req.es_dueno`.
+
+`utils/filtroAmbito.js#filtroAmbito(req)` devuelve un `ctx` que además del filtro (props enumerables, se esparcen con `{ ...ctx }`) lleva metadatos NO enumerables (no contaminan queries): `ctx.actor_id`, `ctx.es_dueno`, `ctx.creado_por`, `ctx.sello` (para create) y los helpers `ctx.puedeModificar(item)` / `ctx.puedeMarcarFinal()` / `ctx.puedeGestionarCatalogo()`. Esa es la única fuente de verdad de la matriz de permisos:
+
+- **Ver:** cualquiera con acceso ve todo el tablero.
+- **Crear:** cualquiera con acceso; se sella `creado_por_id = actor` vía `...ctx.sello` (después de `...payload`, para que el cliente no lo falsee).
+- **Editar/eliminar un ítem:** solo quien lo creó (`ctx.puedeModificar(item)`), ni siquiera el dueño toca lo ajeno. Ítems con `creado_por_id` null (empresa, o previos) quedan abiertos para no romper datos viejos.
+- **Poner estado final / completar-reabrir (toggle):** solo el dueño (`ctx.puedeMarcarFinal()`). Como en cat/mod "entregado" es un `update` de `estado`, se detecta el destino con `esEstadoFinal(ctx, estadoId)` y se bloquea al colaborador.
+- **Catálogo (estados/prioridades/tipos) y equipo:** solo el dueño (`exigirDueno(ctx)` / `ctx.puedeGestionarCatalogo()`).
+
+El frontend refleja esta matriz con `hooks/usePermisosTablero.js` (ocultar/deshabilitar controles), pero el backend es la autoridad. Header `X-Owner-Id` autorizado en CORS junto a `X-Ambito`.
+
 ## Identificadores: SIEMPRE `_id` real, nunca un slug de texto editable
 
 Bug real ya corregido y por qué importa: `Estado`/`Prioridad` tenían `value` (slug derivado de `label`, vía `utils/slugify.js`) que se regeneraba cada vez que el usuario renombraba el `label`. Como `Categoria.estado`/`Modulo.estado`/`Requerimiento.estado`/`prioridad` guardaban ese `value` como string, renombrar un estado dejaba huérfanos todos los registros que ya lo usaban (apuntaban a un slug que ya no existía en ningún lado).
