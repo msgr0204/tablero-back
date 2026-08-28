@@ -8,6 +8,7 @@ const storageService = require('./storage.services');
 const hayCambiosReales = require('../utils/hayCambiosReales');
 const idsIguales = require('../utils/idsIguales');
 const { limpiarCamposProtegidos } = require('../utils/camposProtegidos');
+const vistoService = require('./visto.services');
 
 const MAXIMO_ADJUNTOS = 3;
 
@@ -37,9 +38,15 @@ async function esEstadoFinal(ctx, estadoId) {
   return !!estadoDoc?.es_estado_final;
 }
 
-async function attachObservaciones(req) {
+async function attachObservaciones(ctx, req) {
   const observaciones = await ObservacionRequerimiento.find({ requerimiento_id: req._id }).sort({ fecha: 1 });
-  return { ...req.toObject(), observaciones };
+  // Acuse de recibo (visto), solo en empresa.
+  let visto = null;
+  if (ctx?.ambito === 'empresa') {
+    const resumen = await vistoService.resumenPorEntidades(ctx.tenant_id, ctx.actor_id, 'Requerimiento', [req]);
+    visto = resumen.get(req._id.toString()) ?? null;
+  }
+  return { ...req.toObject(), observaciones, visto };
 }
 
 async function create(ctx, moduloId, payload) {
@@ -72,7 +79,7 @@ async function create(ctx, moduloId, payload) {
     );
   }
 
-  return attachObservaciones(requerimiento);
+  return attachObservaciones(ctx, requerimiento);
 }
 
 async function update(ctx, id, payload) {
@@ -102,7 +109,7 @@ async function update(ctx, id, payload) {
   }
 
   if (!hayCambiosReales(anterior, data)) {
-    return attachObservaciones(anterior);
+    return attachObservaciones(ctx, anterior);
   }
 
   const requerimiento = await Requerimiento.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
@@ -129,7 +136,7 @@ async function update(ctx, id, payload) {
     }
   }
 
-  return attachObservaciones(requerimiento);
+  return attachObservaciones(ctx, requerimiento);
 }
 
 async function remove(ctx, id) {
@@ -163,7 +170,7 @@ async function reorder(ctx, moduloId, orderedIds) {
     orderedIds.map((id, index) => Requerimiento.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
   const lista = await Requerimiento.find({ ...ctx, modulo_id: moduloId, eliminado_at: null }).sort({ orden: 1 });
-  return Promise.all(lista.map(attachObservaciones));
+  return Promise.all(lista.map((r) => attachObservaciones(ctx, r)));
 }
 
 async function toggleCompletado(ctx, id, completado, estadoRestaurado) {
@@ -217,7 +224,7 @@ async function toggleCompletado(ctx, id, completado, estadoRestaurado) {
     );
   }
 
-  return attachObservaciones(requerimiento);
+  return attachObservaciones(ctx, requerimiento);
 }
 
 async function addAdjunto(ctx, id, buffer) {
@@ -232,7 +239,7 @@ async function addAdjunto(ctx, id, buffer) {
   requerimiento.adjuntos.push({ url, ruta });
   await requerimiento.save();
 
-  return attachObservaciones(requerimiento);
+  return attachObservaciones(ctx, requerimiento);
 }
 
 async function removeAdjunto(ctx, id, adjuntoId) {
@@ -240,13 +247,13 @@ async function removeAdjunto(ctx, id, adjuntoId) {
   if (!requerimiento) return null;
 
   const adjunto = requerimiento.adjuntos.find((a) => a._id.toString() === adjuntoId);
-  if (!adjunto) return attachObservaciones(requerimiento);
+  if (!adjunto) return attachObservaciones(ctx, requerimiento);
 
   requerimiento.adjuntos.pull(adjuntoId);
   await requerimiento.save();
   await storageService.eliminarImagen(adjunto.ruta);
 
-  return attachObservaciones(requerimiento);
+  return attachObservaciones(ctx, requerimiento);
 }
 
 module.exports = { create, update, remove, reorder, toggleCompletado, addAdjunto, removeAdjunto };

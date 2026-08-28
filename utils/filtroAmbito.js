@@ -61,6 +61,24 @@ function filtroAmbito(req) {
       enumerable: false,
       value: () => req.ambito !== 'personal' || es_dueno,
     },
+    // Solo el dueño marca sus ítems como público/privado.
+    puedeMarcarVisibilidad: {
+      enumerable: false,
+      value: () => req.ambito === 'personal' && es_dueno,
+    },
+    // Fragmento de filtro de visibilidad para colecciones con el campo
+    // `visibilidad` (Categoria, Modulo). Se compone EXPLÍCITAMENTE en sus
+    // queries (no va en el spread del ctx, para no aplicarlo a colecciones que
+    // no tienen el campo). Un colaborador solo ve: lo público, o lo que NO creó
+    // el dueño (los ítems de colaboradores no tienen privacidad). El dueño y el
+    // ámbito empresa no filtran nada -> devuelve {}.
+    filtroVisibilidad: {
+      enumerable: false,
+      value: () => {
+        if (req.ambito !== 'personal' || es_dueno) return {};
+        return { $or: [{ visibilidad: 'publico' }, { creado_por_id: { $ne: req.owner_id } }] };
+      },
+    },
   });
 
   return ctx;

@@ -4,6 +4,7 @@ const categoriaSchema = new mongoose.Schema({
   tenant_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', required: true },
   ambito: { type: String, enum: ['empresa', 'personal', 'equipo'], default: 'empresa' },
   owner_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', default: null },
+  visibilidad: { type: String, enum: ['publico', 'privado'], default: 'publico' },
   nombre: { type: String, required: true, trim: true },
   descripcion: { type: String, default: null },
   estado: { type: mongoose.Schema.Types.ObjectId, ref: 'Estado', default: null },

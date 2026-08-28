@@ -9,6 +9,7 @@ const historialService = require('./historial.services');
 const hayCambiosReales = require('../utils/hayCambiosReales');
 const idsIguales = require('../utils/idsIguales');
 const { limpiarCamposProtegidos } = require('../utils/camposProtegidos');
+const vistoService = require('./visto.services');
 
 // El tablero personal es silencioso por ahora: no genera notificaciones ni
 // historial (se cubre en su propio roadmap). Solo el ámbito empresa los emite.
@@ -34,24 +35,41 @@ async function esEstadoFinal(ctx, estadoId) {
 
 async function attachNested(ctx, modulo) {
   const requerimientos = await Requerimiento.find({ ...ctx, modulo_id: modulo._id, eliminado_at: null }).sort({ orden: 1 });
+  // Acuse de recibo (visto) a nivel de requerimiento; solo en empresa.
+  const resumenVisto = ctx.ambito === 'empresa'
+    ? await vistoService.resumenPorEntidades(ctx.tenant_id, ctx.actor_id, 'Requerimiento', requerimientos)
+    : null;
   const requerimientosConObs = await Promise.all(
     requerimientos.map(async (r) => {
       const observaciones = await ObservacionRequerimiento.find({ requerimiento_id: r._id }).sort({ fecha: 1 });
-      return { ...r.toObject(), observaciones };
+      const visto = resumenVisto ? (resumenVisto.get(r._id.toString()) ?? null) : null;
+      return { ...r.toObject(), observaciones, visto };
     })
   );
   const observaciones = await ObservacionModulo.find({ modulo_id: modulo._id }).sort({ fecha: 1 });
   return { ...modulo.toObject(), requerimientos: requerimientosConObs, observaciones };
 }
 
+// Una categoría privada del dueño oculta TODO su subárbol para el colaborador,
+// aunque los módulos internos sean públicos. Devuelve true si el colaborador no
+// puede ver esa categoría padre.
+async function categoriaPadreOculta(ctx, categoriaId) {
+  const visible = await Categoria.findOne({ ...ctx, ...ctx.filtroVisibilidad(), _id: categoriaId, eliminado_at: null }).select('_id');
+  return !visible;
+}
+
 async function getByCategory(ctx, categoriaId) {
-  const modulos = await Modulo.find({ ...ctx, categoria_id: categoriaId, eliminado_at: null }).sort({ orden: 1 });
+  if (await categoriaPadreOculta(ctx, categoriaId)) return [];
+  const modulos = await Modulo.find({ ...ctx, ...ctx.filtroVisibilidad(), categoria_id: categoriaId, eliminado_at: null }).sort({ orden: 1 });
   return Promise.all(modulos.map((m) => attachNested(ctx, m)));
 }
 
 async function getById(ctx, id) {
-  const modulo = await Modulo.findOne({ ...ctx, _id: id, eliminado_at: null });
+  const modulo = await Modulo.findOne({ ...ctx, ...ctx.filtroVisibilidad(), _id: id, eliminado_at: null });
   if (!modulo) return null;
+  // Herencia: si la categoría padre está oculta para este colaborador, el
+  // módulo tampoco se ve, aunque él sea público.
+  if (await categoriaPadreOculta(ctx, modulo.categoria_id)) return null;
   return attachNested(ctx, modulo);
 }
 
@@ -73,7 +91,9 @@ async function create(ctx, categoriaId, payload) {
   }
   const total = await Modulo.countDocuments({ ...ctx, categoria_id: categoriaId });
   const prioridad = await resolverPrioridad(ctx, payload.estado, payload.prioridad);
-  const modulo = await Modulo.create({ ...payload, ...ctx, ...ctx.sello, prioridad, categoria_id: categoriaId, orden: total });
+  // Solo el dueño decide público/privado; lo que crea un colaborador es siempre público.
+  const visibilidad = ctx.puedeMarcarVisibilidad() && payload.visibilidad === 'privado' ? 'privado' : 'publico';
+  const modulo = await Modulo.create({ ...payload, ...ctx, ...ctx.sello, prioridad, visibilidad, categoria_id: categoriaId, orden: total });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
@@ -97,6 +117,10 @@ async function updateDetail(ctx, id, payload) {
   }
 
   const data = limpiarCamposProtegidos(payload);
+  // La visibilidad solo la cambia el dueño; si un colaborador la envía, se ignora.
+  if ('visibilidad' in data && !ctx.puedeMarcarVisibilidad()) {
+    delete data.visibilidad;
+  }
   if ('nombre' in data && !data.nombre.trim()) {
     throw new Error('El nombre del módulo es obligatorio');
   }

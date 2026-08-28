@@ -65,6 +65,7 @@ const metricasRoutes = require('./routes/metricas.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const tableroPersonalRoutes = require('./routes/tableroPersonal.routes');
 const colaboradoresRoutes = require('./routes/colaboradores.routes');
+const vistoRoutes = require('./routes/visto.routes');
 
 //Uso de rutas
 app.use("/api/auth", authRoutes);
@@ -81,6 +82,7 @@ app.use("/api/metricas", authMiddleware, metricasRoutes);
 app.use("/api/usuarios", authMiddleware, adminMiddleware, usuariosRoutes);
 app.use("/api/tablero-personal", authMiddleware, tableroPersonalRoutes);
 app.use("/api/colaboradores", authMiddleware, colaboradoresRoutes);
+app.use("/api/visto", authMiddleware, vistoRoutes);
 
 
 app.get('/', (req, res) => {

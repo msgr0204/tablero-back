@@ -34,7 +34,7 @@ async function withCounts(ctx, categorias) {
   const lista = Array.isArray(categorias) ? categorias : [categorias];
   const result = await Promise.all(
     lista.map(async (cat) => {
-      const modulos = await Modulo.find({ ...ctx, categoria_id: cat._id, eliminado_at: null }).select('_id');
+      const modulos = await Modulo.find({ ...ctx, ...ctx.filtroVisibilidad(), categoria_id: cat._id, eliminado_at: null }).select('_id');
       const moduloIds = modulos.map((m) => m._id);
       const totalRequerimientos = await Requerimiento.countDocuments({ ...ctx, modulo_id: { $in: moduloIds }, eliminado_at: null });
       return {
@@ -48,12 +48,12 @@ async function withCounts(ctx, categorias) {
 }
 
 async function getAll(ctx) {
-  const categorias = await Categoria.find({ ...ctx, eliminado_at: null }).sort({ orden: 1 });
+  const categorias = await Categoria.find({ ...ctx, ...ctx.filtroVisibilidad(), eliminado_at: null }).sort({ orden: 1 });
   return withCounts(ctx, categorias);
 }
 
 async function getById(ctx, id) {
-  const categoria = await Categoria.findOne({ ...ctx, _id: id, eliminado_at: null });
+  const categoria = await Categoria.findOne({ ...ctx, ...ctx.filtroVisibilidad(), _id: id, eliminado_at: null });
   if (!categoria) return null;
   return withCounts(ctx, categoria);
 }
@@ -67,7 +67,9 @@ async function create(ctx, payload) {
   }
   const total = await Categoria.countDocuments({ ...ctx });
   const prioridad = await resolverPrioridad(ctx, payload.estado, payload.prioridad);
-  const categoria = await Categoria.create({ ...payload, ...ctx, ...ctx.sello, prioridad, orden: total });
+  // Solo el dueño decide público/privado; lo que crea un colaborador es siempre público.
+  const visibilidad = ctx.puedeMarcarVisibilidad() && payload.visibilidad === 'privado' ? 'privado' : 'publico';
+  const categoria = await Categoria.create({ ...payload, ...ctx, ...ctx.sello, prioridad, visibilidad, orden: total });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
@@ -91,6 +93,10 @@ async function update(ctx, id, payload) {
   }
 
   const data = limpiarCamposProtegidos(payload);
+  // La visibilidad solo la cambia el dueño; si un colaborador la envía, se ignora.
+  if ('visibilidad' in data && !ctx.puedeMarcarVisibilidad()) {
+    delete data.visibilidad;
+  }
   if ('nombre' in data && !data.nombre.trim()) {
     throw new Error('El nombre de la categoría es obligatorio');
   }
