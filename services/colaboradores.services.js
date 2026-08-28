@@ -1,5 +1,8 @@
 const Usuario = require('../models/Usuario');
 const ColaboradorTablero = require('../models/ColaboradorTablero');
+const Categoria = require('../models/Categoria');
+const Modulo = require('../models/Modulo');
+const Requerimiento = require('../models/Requerimiento');
 const idsIguales = require('../utils/idsIguales');
 
 /**
@@ -80,10 +83,30 @@ async function tablerosCompartidosConmigo(tenantId, colaboradorId) {
   const propietarios = await Usuario.find({ _id: { $in: propietarioIds }, tenant_id: tenantId }).select('nombre email');
   const porId = new Map(propietarios.map((u) => [u._id.toString(), u]));
 
-  return propietarioIds
-    .map((pid) => porId.get(pid.toString()))
-    .filter(Boolean)
-    .map((u) => ({ ownerId: u._id, nombre: u.nombre, email: u.email }));
+  // Por cada tablero: nº de módulos y cuántos ítems (cat+mod+req) creó el propio
+  // colaborador ahí. Se calcula por owner para la galería de "equipos".
+  return Promise.all(
+    propietarioIds
+      .map((pid) => porId.get(pid.toString()))
+      .filter(Boolean)
+      .map(async (u) => {
+        const filtroTablero = { tenant_id: tenantId, ambito: 'personal', owner_id: u._id, eliminado_at: null };
+        const filtroMios = { ...filtroTablero, creado_por_id: colaboradorId };
+        const [totalModulos, cats, mods, reqs] = await Promise.all([
+          Modulo.countDocuments(filtroTablero),
+          Categoria.countDocuments(filtroMios),
+          Modulo.countDocuments(filtroMios),
+          Requerimiento.countDocuments(filtroMios),
+        ]);
+        return {
+          ownerId: u._id,
+          nombre: u.nombre,
+          email: u.email,
+          totalModulos,
+          itemsCreadosPorMi: cats + mods + reqs,
+        };
+      })
+  );
 }
 
 module.exports = { listarEquipo, concederAcceso, revocarAcceso, tablerosCompartidosConmigo };

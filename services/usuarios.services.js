@@ -3,6 +3,20 @@ const Usuario = require('../models/Usuario');
 
 const SALT_ROUNDS = 10;
 
+// Campos de perfil que el cliente puede escribir libremente (todo opcional).
+// Se recortan y se pasan a string para no guardar tipos raros; el documento se
+// valida aparte solo si viene con contenido.
+function extraerPerfil(payload) {
+  const perfil = {};
+  for (const campo of ['cargo', 'telefono', 'documento', 'ubicacion']) {
+    if (campo in payload) perfil[campo] = String(payload[campo] ?? '').trim();
+  }
+  if (perfil.documento && !/^\d{4,15}$/.test(perfil.documento)) {
+    throw new Error('El documento debe tener entre 4 y 15 dígitos');
+  }
+  return perfil;
+}
+
 async function contarAdmins(tenantId) {
   return Usuario.countDocuments({ tenant_id: tenantId, rol: 'admin' });
 }
@@ -11,7 +25,8 @@ async function getAll(tenantId) {
   return Usuario.find({ tenant_id: tenantId }).select('-password').sort({ created_at: 1 });
 }
 
-async function create(tenantId, { nombre, email, password, rol }) {
+async function create(tenantId, payload) {
+  const { nombre, email, password, rol } = payload;
   if (!nombre || !nombre.trim()) {
     throw new Error('El nombre es obligatorio');
   }
@@ -27,6 +42,8 @@ async function create(tenantId, { nombre, email, password, rol }) {
     throw new Error('Ya existe una cuenta registrada con este correo');
   }
 
+  const perfil = extraerPerfil(payload);
+
   const passwordHasheado = await bcrypt.hash(password, SALT_ROUNDS);
   const usuario = await Usuario.create({
     nombre: nombre.trim(),
@@ -34,6 +51,8 @@ async function create(tenantId, { nombre, email, password, rol }) {
     password: passwordHasheado,
     tenant_id: tenantId,
     rol: rol === 'miembro' ? 'miembro' : 'admin',
+    activo: payload.activo === false ? false : true,
+    ...perfil,
   });
 
   const { password: _password, ...usuarioSinPassword } = usuario.toObject();
@@ -68,6 +87,15 @@ async function update(tenantId, id, payload, usuarioActualId) {
     }
     data.password = await bcrypt.hash(payload.password, SALT_ROUNDS);
   }
+  if ('activo' in payload) {
+    const esElMismo = id === usuarioActualId.toString();
+    if (esElMismo && payload.activo === false) {
+      throw new Error('No puedes desactivar tu propia cuenta');
+    }
+    data.activo = payload.activo !== false;
+  }
+
+  Object.assign(data, extraerPerfil(payload));
 
   const actualizado = await Usuario.findByIdAndUpdate(id, data, { new: true }).select('-password');
   return actualizado;

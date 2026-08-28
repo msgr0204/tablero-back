@@ -47,6 +47,23 @@ function firmarToken(usuario) {
   );
 }
 
+// Forma pública del usuario que viaja al frontend: nunca el password, siempre el
+// perfil extendido. Único lugar que decide qué campos ve el cliente, para que
+// register/login/getPerfil no se desincronicen entre sí.
+function usuarioPublico(usuario) {
+  return {
+    id: usuario._id,
+    nombre: usuario.nombre,
+    email: usuario.email,
+    rol: usuario.rol,
+    cargo: usuario.cargo ?? '',
+    telefono: usuario.telefono ?? '',
+    documento: usuario.documento ?? '',
+    ubicacion: usuario.ubicacion ?? '',
+    activo: usuario.activo !== false,
+  };
+}
+
 async function register({ nombre, email, password, nombreEmpresa }) {
   if (!nombre || !nombre.trim()) {
     throw new Error('El nombre es obligatorio');
@@ -82,7 +99,7 @@ async function register({ nombre, email, password, nombreEmpresa }) {
 
   return {
     token,
-    usuario: { id: usuario._id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
+    usuario: usuarioPublico(usuario),
     tenant: { id: tenant._id, nombre: tenant.nombre, logoUrl: tenant.logoUrl, colors: tenant.colors, personalizado: tenant.personalizado },
   };
 }
@@ -102,13 +119,19 @@ async function login({ email, password }) {
     throw new Error('Correo o contraseña incorrectos');
   }
 
+  // Una cuenta desactivada conserva sus datos pero no puede operar: se bloquea
+  // aquí, en la puerta, en vez de dejarla entrar y filtrar por cada endpoint.
+  if (usuario.activo === false) {
+    throw new Error('Tu cuenta está desactivada. Contacta a un administrador.');
+  }
+
   const tenant = await Tenant.findById(usuario.tenant_id);
 
   const token = firmarToken(usuario);
 
   return {
     token,
-    usuario: { id: usuario._id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
+    usuario: usuarioPublico(usuario),
     tenant: { id: tenant._id, nombre: tenant.nombre, logoUrl: tenant.logoUrl, colors: tenant.colors, personalizado: tenant.personalizado },
   };
 }
@@ -118,7 +141,7 @@ async function getPerfil(usuarioId) {
   if (!usuario) return null;
   const tenant = await Tenant.findById(usuario.tenant_id);
   return {
-    usuario: { id: usuario._id, nombre: usuario.nombre, email: usuario.email, rol: usuario.rol },
+    usuario: usuarioPublico(usuario),
     tenant: { id: tenant._id, nombre: tenant.nombre, logoUrl: tenant.logoUrl, colors: tenant.colors, personalizado: tenant.personalizado },
   };
 }
