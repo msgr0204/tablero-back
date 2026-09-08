@@ -36,7 +36,7 @@ async function marcarLeida(req, res) {
     res.json(notificacion);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de notificación inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -45,7 +45,7 @@ async function marcarTodasLeidas(req, res) {
     const total = await notificacionesService.marcarTodasLeidas(req.tenant_id);
     res.json({ total });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -55,7 +55,7 @@ async function marcarVariasLeidas(req, res) {
     res.json({ total });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de notificación inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

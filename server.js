@@ -48,7 +48,9 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // Middleware para permitir CORS
-app.use(express.json());
+// Límite explícito: el body de una petición no debería crecer sin techo, y los
+// snapshots de auditoría se recortan aparte antes de guardarse.
+app.use(express.json({ limit: '1mb' }));
 
 //Rutas
 const authRoutes = require('./routes/auth.routes');
@@ -66,6 +68,7 @@ const usuariosRoutes = require('./routes/usuarios.routes');
 const tableroPersonalRoutes = require('./routes/tableroPersonal.routes');
 const colaboradoresRoutes = require('./routes/colaboradores.routes');
 const vistoRoutes = require('./routes/visto.routes');
+const auditoriaRoutes = require('./routes/auditoria.routes');
 
 //Uso de rutas
 app.use("/api/auth", authRoutes);
@@ -76,13 +79,15 @@ app.use("/api/tipos", authMiddleware, ambitoMiddleware, tiposRoutes);
 app.use("/api/categorias", authMiddleware, ambitoMiddleware, categoriasRoutes);
 app.use("/api/modulos", authMiddleware, ambitoMiddleware, modulosRoutes);
 app.use("/api/notificaciones", authMiddleware, notificacionesRoutes);
-app.use("/api/tenant", authMiddleware, tenantRoutes);
+// El branding es la identidad de la empresa: lo cambia un administrador.
+app.use("/api/tenant", authMiddleware, adminMiddleware, tenantRoutes);
 app.use("/api/dashboard", authMiddleware, dashboardRoutes);
 app.use("/api/metricas", authMiddleware, metricasRoutes);
 app.use("/api/usuarios", authMiddleware, adminMiddleware, usuariosRoutes);
 app.use("/api/tablero-personal", authMiddleware, tableroPersonalRoutes);
 app.use("/api/colaboradores", authMiddleware, colaboradoresRoutes);
 app.use("/api/visto", authMiddleware, vistoRoutes);
+app.use("/api/auditoria", authMiddleware, ambitoMiddleware, auditoriaRoutes);
 
 
 app.get('/', (req, res) => {

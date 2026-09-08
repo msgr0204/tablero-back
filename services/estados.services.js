@@ -3,35 +3,42 @@ const Categoria = require('../models/Categoria');
 const Modulo = require('../models/Modulo');
 const Requerimiento = require('../models/Requerimiento');
 const slugify = require('../utils/slugify');
+const calcularCambios = require('../utils/calcularCambios');
+const { auditar, ACCIONES } = require('./auditoria.services');
+const { exigir } = require('../utils/permisos');
 
-// El catálogo del tablero personal solo lo gestiona su dueño; un colaborador lo
-// usa pero no lo edita. En empresa no aplica esta restricción.
-function exigirDueno(ctx) {
-  if (!ctx.puedeGestionarCatalogo()) {
-    throw new Error('Solo el dueño del tablero puede modificar su catálogo');
-  }
+function exigirGestionCatalogo(ctx) {
+  // El catálogo es el vocabulario de TODO el tablero: renombrar un estado o
+  // cambiar cuál cierra afecta a cada persona del equipo. Por eso en empresa lo
+  // gestiona un administrador, y en un tablero personal solo su dueño.
+  exigir(
+    ctx.puedeGestionarCatalogo(),
+    ctx.ambito === 'personal'
+      ? 'Solo el dueño del tablero puede modificar su catálogo'
+      : 'Solo un administrador puede modificar el catálogo de la empresa'
+  );
 }
 
 async function contarUso(ctx, estadoId) {
   const [categorias, modulos, requerimientos] = await Promise.all([
-    Categoria.countDocuments({ ...ctx, estado: estadoId }),
-    Modulo.countDocuments({ ...ctx, estado: estadoId }),
-    Requerimiento.countDocuments({ ...ctx, estado: estadoId }),
+    Categoria.countDocuments({ ...ctx, estado: estadoId, eliminado_at: null }),
+    Modulo.countDocuments({ ...ctx, estado: estadoId, eliminado_at: null }),
+    Requerimiento.countDocuments({ ...ctx, estado: estadoId, eliminado_at: null }),
   ]);
   return categorias + modulos + requerimientos;
 }
 
 async function getAll(ctx) {
-  return Estado.find({ ...ctx }).sort({ orden: 1 });
+  return Estado.find({ ...ctx, eliminado_at: null }).sort({ orden: 1 });
 }
 
 async function create(ctx, { label, color, es_estado_final }) {
-  exigirDueno(ctx);
+  exigirGestionCatalogo(ctx);
   if (!label || !label.trim()) {
     throw new Error('El nombre del estado es obligatorio');
   }
-  const total = await Estado.countDocuments({ ...ctx });
-  return Estado.create({
+  const total = await Estado.countDocuments({ ...ctx, eliminado_at: null });
+  const estado = await Estado.create({
     ...ctx,
     value: slugify(label),
     label: label.trim(),
@@ -39,10 +46,19 @@ async function create(ctx, { label, color, es_estado_final }) {
     es_estado_final: !!es_estado_final,
     orden: total,
   });
+
+  await auditar(ctx, {
+    accion: ACCIONES.CREAR,
+    entidad: 'Estado',
+    entidad_id: estado._id,
+    entidad_nombre: estado.label,
+  });
+
+  return estado;
 }
 
 async function update(ctx, id, payload) {
-  exigirDueno(ctx);
+  exigirGestionCatalogo(ctx);
   const data = { ...payload };
   if ('label' in data) {
     if (!data.label || !data.label.trim()) {
@@ -50,15 +66,29 @@ async function update(ctx, id, payload) {
     }
     data.label = data.label.trim();
   }
-  return Estado.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
+  // Se carga el anterior para poder registrar qué cambió exactamente.
+  const anterior = await Estado.findOne({ ...ctx, _id: id, eliminado_at: null });
+  const actualizado = await Estado.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
+
+  if (actualizado) {
+    await auditar(ctx, {
+      accion: ACCIONES.EDITAR,
+      entidad: 'Estado',
+      entidad_id: actualizado._id,
+      entidad_nombre: actualizado.label,
+      cambios: calcularCambios(anterior, data),
+    });
+  }
+
+  return actualizado;
 }
 
 async function remove(ctx, id) {
-  exigirDueno(ctx);
-  const estado = await Estado.findOne({ ...ctx, _id: id });
+  exigirGestionCatalogo(ctx);
+  const estado = await Estado.findOne({ ...ctx, _id: id, eliminado_at: null });
   if (!estado) return null;
 
-  const total = await Estado.countDocuments({ ...ctx });
+  const total = await Estado.countDocuments({ ...ctx, eliminado_at: null });
   if (total <= 1) {
     throw new Error('Debe existir al menos un estado');
   }
@@ -68,14 +98,32 @@ async function remove(ctx, id) {
     throw new Error(`No se puede eliminar: este estado está en uso por ${usos} registro(s)`);
   }
 
-  return Estado.findOneAndDelete({ ...ctx, _id: id });
+  // Soft delete: el catálogo borrado se conserva para que la auditoría y los
+  // registros históricos que lo usaban sigan siendo legibles.
+  const eliminado = await Estado.findOneAndUpdate({ ...ctx, _id: id }, { eliminado_at: new Date() }, { new: true });
+
+  await auditar(ctx, {
+    accion: ACCIONES.ELIMINAR,
+    entidad: 'Estado',
+    entidad_id: estado._id,
+    entidad_nombre: estado.label,
+    snapshot: { label: estado.label, color: estado.color },
+  });
+
+  return eliminado;
 }
 
 async function reorder(ctx, orderedIds) {
-  exigirDueno(ctx);
+  exigirGestionCatalogo(ctx);
   await Promise.all(
     orderedIds.map((id, index) => Estado.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
+  await auditar(ctx, {
+    accion: ACCIONES.REORDENAR,
+    entidad: 'Estado',
+    entidad_nombre: `${orderedIds.length} elemento(s) del catálogo`,
+  });
+
   return getAll(ctx);
 }
 

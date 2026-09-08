@@ -28,7 +28,7 @@ async function create(req, res) {
     res.status(201).json(modulo);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de categoría inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -39,7 +39,7 @@ async function updateDetail(req, res) {
     res.json(modulo);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de módulo inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -50,7 +50,7 @@ async function remove(req, res) {
     res.json({ message: 'Módulo eliminado' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de módulo inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -59,7 +59,7 @@ async function reorder(req, res) {
     const modulos = await modulosService.reorder(filtroAmbito(req), req.params.categoriaId, req.body.orderedIds);
     res.json(modulos);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

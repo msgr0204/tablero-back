@@ -1,40 +1,56 @@
 const Tipo = require('../models/Tipo');
 const Requerimiento = require('../models/Requerimiento');
 const slugify = require('../utils/slugify');
+const calcularCambios = require('../utils/calcularCambios');
+const { auditar, ACCIONES } = require('./auditoria.services');
+const { exigir } = require('../utils/permisos');
 
-// El catálogo del tablero personal solo lo gestiona su dueño; un colaborador lo
-// usa pero no lo edita. En empresa no aplica esta restricción.
-function exigirDueno(ctx) {
-  if (!ctx.puedeGestionarCatalogo()) {
-    throw new Error('Solo el dueño del tablero puede modificar su catálogo');
-  }
+function exigirGestionCatalogo(ctx) {
+  // El catálogo es el vocabulario de TODO el tablero: renombrar un estado o
+  // cambiar cuál cierra afecta a cada persona del equipo. Por eso en empresa lo
+  // gestiona un administrador, y en un tablero personal solo su dueño.
+  exigir(
+    ctx.puedeGestionarCatalogo(),
+    ctx.ambito === 'personal'
+      ? 'Solo el dueño del tablero puede modificar su catálogo'
+      : 'Solo un administrador puede modificar el catálogo de la empresa'
+  );
 }
 
 async function contarUso(ctx, tipoId) {
-  return Requerimiento.countDocuments({ ...ctx, tipo: tipoId });
+  return Requerimiento.countDocuments({ ...ctx, tipo: tipoId, eliminado_at: null });
 }
 
 async function getAll(ctx) {
-  return Tipo.find({ ...ctx }).sort({ orden: 1 });
+  return Tipo.find({ ...ctx, eliminado_at: null }).sort({ orden: 1 });
 }
 
 async function create(ctx, { label, color }) {
-  exigirDueno(ctx);
+  exigirGestionCatalogo(ctx);
   if (!label || !label.trim()) {
     throw new Error('El nombre del tipo es obligatorio');
   }
-  const total = await Tipo.countDocuments({ ...ctx });
-  return Tipo.create({
+  const total = await Tipo.countDocuments({ ...ctx, eliminado_at: null });
+  const tipo = await Tipo.create({
     ...ctx,
     value: slugify(label),
     label: label.trim(),
     color,
     orden: total,
   });
+
+  await auditar(ctx, {
+    accion: ACCIONES.CREAR,
+    entidad: 'Tipo',
+    entidad_id: tipo._id,
+    entidad_nombre: tipo.label,
+  });
+
+  return tipo;
 }
 
 async function update(ctx, id, payload) {
-  exigirDueno(ctx);
+  exigirGestionCatalogo(ctx);
   const data = { ...payload };
   if ('label' in data) {
     if (!data.label || !data.label.trim()) {
@@ -42,12 +58,26 @@ async function update(ctx, id, payload) {
     }
     data.label = data.label.trim();
   }
-  return Tipo.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
+  // Se carga el anterior para poder registrar qué cambió exactamente.
+  const anterior = await Tipo.findOne({ ...ctx, _id: id, eliminado_at: null });
+  const actualizado = await Tipo.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
+
+  if (actualizado) {
+    await auditar(ctx, {
+      accion: ACCIONES.EDITAR,
+      entidad: 'Tipo',
+      entidad_id: actualizado._id,
+      entidad_nombre: actualizado.label,
+      cambios: calcularCambios(anterior, data),
+    });
+  }
+
+  return actualizado;
 }
 
 async function remove(ctx, id) {
-  exigirDueno(ctx);
-  const tipo = await Tipo.findOne({ ...ctx, _id: id });
+  exigirGestionCatalogo(ctx);
+  const tipo = await Tipo.findOne({ ...ctx, _id: id, eliminado_at: null });
   if (!tipo) return null;
 
   const usos = await contarUso(ctx, tipo._id);
@@ -55,14 +85,32 @@ async function remove(ctx, id) {
     throw new Error(`No se puede eliminar: este tipo está en uso por ${usos} registro(s)`);
   }
 
-  return Tipo.findOneAndDelete({ ...ctx, _id: id });
+  // Soft delete: el catálogo borrado se conserva para que la auditoría y los
+  // registros históricos que lo usaban sigan siendo legibles.
+  const eliminado = await Tipo.findOneAndUpdate({ ...ctx, _id: id }, { eliminado_at: new Date() }, { new: true });
+
+  await auditar(ctx, {
+    accion: ACCIONES.ELIMINAR,
+    entidad: 'Tipo',
+    entidad_id: tipo._id,
+    entidad_nombre: tipo.label,
+    snapshot: { label: tipo.label, color: tipo.color },
+  });
+
+  return eliminado;
 }
 
 async function reorder(ctx, orderedIds) {
-  exigirDueno(ctx);
+  exigirGestionCatalogo(ctx);
   await Promise.all(
     orderedIds.map((id, index) => Tipo.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
+  await auditar(ctx, {
+    accion: ACCIONES.REORDENAR,
+    entidad: 'Tipo',
+    entidad_nombre: `${orderedIds.length} elemento(s) del catálogo`,
+  });
+
   return getAll(ctx);
 }
 

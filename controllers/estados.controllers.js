@@ -15,7 +15,7 @@ async function create(req, res) {
     const estado = await estadosService.create(filtroAmbito(req), req.body);
     res.status(201).json(estado);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -26,7 +26,7 @@ async function update(req, res) {
     res.json(estado);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de estado inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -37,7 +37,7 @@ async function remove(req, res) {
     res.json({ message: 'Estado eliminado' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de estado inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -46,7 +46,7 @@ async function reorder(req, res) {
     const estados = await estadosService.reorder(filtroAmbito(req), req.body.orderedIds);
     res.json(estados);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

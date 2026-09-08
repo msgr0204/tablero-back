@@ -82,8 +82,8 @@ async function getSinActividad(tenantId) {
 
 async function getSaludCatalogos(tenantId) {
   const [estados, prioridades] = await Promise.all([
-    Estado.find({ tenant_id: tenantId, ambito: 'empresa' }).sort({ orden: 1 }),
-    Prioridad.find({ tenant_id: tenantId, ambito: 'empresa' }).sort({ orden: 1 }),
+    Estado.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).sort({ orden: 1 }),
+    Prioridad.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).sort({ orden: 1 }),
   ]);
 
   const usosPorEstado = await Requerimiento.aggregate([

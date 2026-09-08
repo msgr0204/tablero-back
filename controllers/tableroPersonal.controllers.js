@@ -7,10 +7,10 @@ const clonarCatalogoService = require('../services/clonarCatalogo.services');
  */
 async function inicializar(req, res) {
   try {
-    const clonados = await clonarCatalogoService.asegurarCatalogoPersonal(req.tenant_id, req.usuario_id);
+    const clonados = await clonarCatalogoService.asegurarCatalogoPersonal(req.tenant_id, req.usuario_id, req);
     res.json({ clonados });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

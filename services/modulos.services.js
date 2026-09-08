@@ -7,8 +7,11 @@ const Estado = require('../models/Estado');
 const notificacionesService = require('./notificaciones.services');
 const historialService = require('./historial.services');
 const hayCambiosReales = require('../utils/hayCambiosReales');
+const calcularCambios = require('../utils/calcularCambios');
+const { auditar, resolverCatalogo, ACCIONES } = require('./auditoria.services');
 const idsIguales = require('../utils/idsIguales');
 const { limpiarCamposProtegidos } = require('../utils/camposProtegidos');
+const { exigir } = require('../utils/permisos');
 const vistoService = require('./visto.services');
 
 // El tablero personal es silencioso por ahora: no genera notificaciones ni
@@ -41,12 +44,12 @@ async function attachNested(ctx, modulo) {
     : null;
   const requerimientosConObs = await Promise.all(
     requerimientos.map(async (r) => {
-      const observaciones = await ObservacionRequerimiento.find({ requerimiento_id: r._id }).sort({ fecha: 1 });
+      const observaciones = await ObservacionRequerimiento.find({ requerimiento_id: r._id, eliminado_at: null }).sort({ fecha: 1 });
       const visto = resumenVisto ? (resumenVisto.get(r._id.toString()) ?? null) : null;
       return { ...r.toObject(), observaciones, visto };
     })
   );
-  const observaciones = await ObservacionModulo.find({ modulo_id: modulo._id }).sort({ fecha: 1 });
+  const observaciones = await ObservacionModulo.find({ modulo_id: modulo._id, eliminado_at: null }).sort({ fecha: 1 });
   return { ...modulo.toObject(), requerimientos: requerimientosConObs, observaciones };
 }
 
@@ -83,17 +86,26 @@ async function create(ctx, categoriaId, payload) {
   if (!categoria) {
     throw new Error('Categoría no encontrada');
   }
-  if (!ctx.puedeModificar(categoria)) {
-    throw new Error('Solo quien creó esta categoría puede agregarle módulos');
-  }
-  if (await esEstadoFinal(ctx, payload.estado) && !ctx.puedeMarcarFinal()) {
-    throw new Error('Solo el dueño del tablero puede crear en estado de cierre');
+  // Aportar un módulo a una categoría ajena es colaborar, no modificarla: en un
+  // tablero compartido exigir autoría del padre paralizaría al equipo.
+  exigir(ctx.puedeCrearHijo(), 'No puedes agregar módulos a este tablero');
+  if (await esEstadoFinal(ctx, payload.estado)) {
+    exigir(ctx.puedeCerrar(), 'No puedes crear este módulo ya entregado');
   }
   const total = await Modulo.countDocuments({ ...ctx, categoria_id: categoriaId });
   const prioridad = await resolverPrioridad(ctx, payload.estado, payload.prioridad);
   // Solo el dueño decide público/privado; lo que crea un colaborador es siempre público.
   const visibilidad = ctx.puedeMarcarVisibilidad() && payload.visibilidad === 'privado' ? 'privado' : 'publico';
   const modulo = await Modulo.create({ ...payload, ...ctx, ...ctx.sello, prioridad, visibilidad, categoria_id: categoriaId, orden: total });
+
+
+  await auditar(ctx, {
+    accion: ACCIONES.CREAR,
+    entidad: 'Modulo',
+    entidad_id: modulo._id,
+    entidad_nombre: modulo.nombre,
+    contexto: { categoria_id: modulo.categoria_id, modulo_id: modulo._id },
+  });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
@@ -112,9 +124,7 @@ async function updateDetail(ctx, id, payload) {
   const anterior = await Modulo.findOne({ ...ctx, _id: id });
   if (!anterior) return null;
 
-  if (!ctx.puedeModificar(anterior)) {
-    throw new Error('Solo quien creó este módulo puede editarlo');
-  }
+  exigir(ctx.puedeModificar(anterior), 'Solo quien creó este módulo o un administrador puede editarlo');
 
   const data = limpiarCamposProtegidos(payload);
   // La visibilidad solo la cambia el dueño; si un colaborador la envía, se ignora.
@@ -125,8 +135,15 @@ async function updateDetail(ctx, id, payload) {
     throw new Error('El nombre del módulo es obligatorio');
   }
   if ('estado' in data) {
-    if (!idsIguales(data.estado, anterior.estado) && await esEstadoFinal(ctx, data.estado) && !ctx.puedeMarcarFinal()) {
-      throw new Error('Solo el dueño del tablero puede marcar como entregado');
+    // Igual que en requerimientos: el formulario de edición es la otra vía tanto
+    // para entregar como para deshacer una entrega.
+    if (!idsIguales(data.estado, anterior.estado)) {
+      if (await esEstadoFinal(ctx, data.estado)) {
+        exigir(ctx.puedeCerrar(), 'No puedes marcar este módulo como entregado');
+      }
+      if (await esEstadoFinal(ctx, anterior.estado)) {
+        exigir(ctx.puedeReabrir(), 'Solo un administrador puede reabrir este módulo entregado');
+      }
     }
     data.prioridad = await resolverPrioridad(ctx, data.estado, data.prioridad);
   }
@@ -136,6 +153,15 @@ async function updateDetail(ctx, id, payload) {
   }
 
   const modulo = await Modulo.findOneAndUpdate({ ...ctx, _id: id }, data, { new: true });
+
+  await auditar(ctx, {
+    accion: ACCIONES.EDITAR,
+    entidad: 'Modulo',
+    entidad_id: modulo._id,
+    entidad_nombre: modulo.nombre,
+    contexto: { categoria_id: modulo.categoria_id, modulo_id: modulo._id },
+    cambios: calcularCambios(anterior, data, await resolverCatalogo(ctx)),
+  });
   if (!modulo) return null;
 
   if (esEmpresa(ctx)) {
@@ -166,13 +192,26 @@ async function remove(ctx, id) {
   const modulo = await Modulo.findOne({ ...ctx, _id: id });
   if (!modulo) return null;
 
-  if (!ctx.puedeModificar(modulo)) {
-    throw new Error('Solo quien creó este módulo puede eliminarlo');
-  }
+  exigir(ctx.puedeEliminar(modulo), 'Solo quien creó este módulo o un administrador puede eliminarlo');
+
+  const totalReqs = await Requerimiento.countDocuments({ ...ctx, modulo_id: id, eliminado_at: null });
 
   const eliminado_at = new Date();
   await Requerimiento.updateMany({ ...ctx, modulo_id: id }, { eliminado_at });
   const eliminado = await Modulo.findOneAndUpdate({ ...ctx, _id: id }, { eliminado_at }, { new: true });
+
+  await auditar(ctx, {
+    accion: ACCIONES.ELIMINAR,
+    entidad: 'Modulo',
+    entidad_id: modulo._id,
+    entidad_nombre: modulo.nombre,
+    contexto: { categoria_id: modulo.categoria_id, modulo_id: modulo._id },
+    snapshot: {
+      descripcion: modulo.descripcion,
+      creado_por: modulo.creado_por,
+      arrastro: { requerimientos: totalReqs },
+    },
+  });
 
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
@@ -188,13 +227,24 @@ async function remove(ctx, id) {
 }
 
 async function reorder(ctx, categoriaId, orderedIds) {
-  if (!ctx.puedeMarcarFinal()) {
-    throw new Error('Solo el dueño del tablero puede reordenar');
-  }
+  exigir(ctx.puedeReordenar(), 'No puedes reordenar este tablero');
+  const ordenPrevio = await Modulo.find({ ...ctx, categoria_id: categoriaId, eliminado_at: null })
+    .sort({ orden: 1 }).select('nombre');
+
   await Promise.all(
     orderedIds.map((id, index) => Modulo.findOneAndUpdate({ ...ctx, _id: id }, { orden: index }))
   );
-  return getByCategory(ctx, categoriaId);
+
+  const resultado = await getByCategory(ctx, categoriaId);
+  await auditar(ctx, {
+    accion: ACCIONES.REORDENAR,
+    entidad: 'Modulo',
+    entidad_id: categoriaId,
+    entidad_nombre: `${orderedIds.length} módulo(s)`,
+    contexto: { categoria_id: categoriaId },
+    snapshot: { antes: ordenPrevio.map((m) => m.nombre), despues: resultado.map((m) => m.nombre) },
+  });
+  return resultado;
 }
 
 module.exports = { getByCategory, getById, create, updateDetail, remove, reorder };

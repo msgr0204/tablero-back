@@ -5,7 +5,7 @@ async function register(req, res) {
     const resultado = await authService.register(req.body);
     res.status(201).json(resultado);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

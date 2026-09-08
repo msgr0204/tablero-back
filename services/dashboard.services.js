@@ -60,7 +60,7 @@ async function getDistribucionPorEstado(tenantId, categoriaId) {
     { $group: { _id: '$estado', total: { $sum: 1 } } },
   ]);
 
-  const estados = await Estado.find({ tenant_id: tenantId, ambito: 'empresa' }).sort({ orden: 1 });
+  const estados = await Estado.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).sort({ orden: 1 });
   return estados.map((estado) => ({
     estadoId: estado._id,
     label: estado.label,
@@ -78,7 +78,7 @@ async function getDistribucionPorPrioridad(tenantId, categoriaId) {
     { $group: { _id: '$prioridad', total: { $sum: 1 } } },
   ]);
 
-  const prioridades = await Prioridad.find({ tenant_id: tenantId, ambito: 'empresa' }).sort({ orden: 1 });
+  const prioridades = await Prioridad.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).sort({ orden: 1 });
   return prioridades.map((prioridad) => ({
     prioridadId: prioridad._id,
     label: prioridad.label,
@@ -159,7 +159,7 @@ async function getTiempoPromedioPorEstado(tenantId, categoriaId) {
     ultimaTransicionPorEntidad.set(entidadKey, transicion);
   }
 
-  const estados = await Estado.find({ tenant_id: tenantId, ambito: 'empresa' }).sort({ orden: 1 });
+  const estados = await Estado.find({ tenant_id: tenantId, ambito: 'empresa', eliminado_at: null }).sort({ orden: 1 });
   return estados.map((estado) => {
     const duraciones = duracionesPorEstado.get(estado._id.toString()) ?? [];
     const promedio = duraciones.length > 0 ? duraciones.reduce((a, b) => a + b, 0) / duraciones.length : null;

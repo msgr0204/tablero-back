@@ -20,6 +20,15 @@ const requerimientoSchema = new mongoose.Schema({
   tipo_anterior: { type: mongoose.Schema.Types.ObjectId, ref: 'Tipo', default: null },
   completado: { type: Boolean, default: false },
   completado_at: { type: Date, default: null },
+  // Quién cerró y quién reabrió. Al reabrir, `completado_at` se limpia para que
+  // el requerimiento vuelva a estar en curso; sin estos campos no quedaría
+  // ningún rastro de que llegó a estar entregado ni de quién lo deshizo.
+  completado_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', default: null },
+  completado_por_nombre: { type: String, default: null },
+  reabierto_por: { type: mongoose.Schema.Types.ObjectId, ref: 'Usuario', default: null },
+  reabierto_por_nombre: { type: String, default: null },
+  reabierto_at: { type: Date, default: null },
+  veces_reabierto: { type: Number, default: 0 },
   fecha_entrega: { type: Date, default: null },
   dias_maximos: { type: Number, default: null },
   creado_por: { type: String, default: 'tu_usuario' },

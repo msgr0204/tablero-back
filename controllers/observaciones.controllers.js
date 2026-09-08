@@ -7,7 +7,7 @@ async function addModuleObservation(req, res) {
     res.status(201).json(observacion);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de módulo inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -17,7 +17,7 @@ async function removeModuleObservation(req, res) {
     res.json({ message: 'Observación eliminada' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de observación inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -28,7 +28,7 @@ async function editModuleObservation(req, res) {
     res.json(observacion);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de observación inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -38,7 +38,7 @@ async function addReqObservation(req, res) {
     res.status(201).json(observacion);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de requerimiento inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -48,7 +48,7 @@ async function removeReqObservation(req, res) {
     res.json({ message: 'Observación eliminada' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de observación inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -59,7 +59,7 @@ async function editReqObservation(req, res) {
     res.json(observacion);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de observación inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

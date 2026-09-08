@@ -4,11 +4,11 @@ const vistoService = require('../services/visto.services');
 // es siempre el autenticado.
 async function marcar(req, res) {
   try {
-    const resultado = await vistoService.marcarVisto(req.tenant_id, req.usuario_id, req.params.entidad, req.params.entidadId);
+    const resultado = await vistoService.marcarVisto(req.tenant_id, req.usuario_id, req.params.entidad, req.params.entidadId, req);
     res.status(201).json(resultado);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -18,7 +18,7 @@ async function detalle(req, res) {
     res.json(lista);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

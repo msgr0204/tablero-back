@@ -3,6 +3,9 @@ const Requerimiento = require('../models/Requerimiento');
 const ObservacionModulo = require('../models/ObservacionModulo');
 const ObservacionRequerimiento = require('../models/ObservacionRequerimiento');
 const notificacionesService = require('./notificaciones.services');
+const { auditar, ACCIONES } = require('./auditoria.services');
+const idsIguales = require('../utils/idsIguales');
+const { exigir } = require('../utils/permisos');
 
 // El tablero personal es silencioso por ahora: no genera notificaciones.
 function esEmpresa(ctx) {
@@ -29,6 +32,14 @@ async function addModuleObservation(ctx, moduloId, texto) {
     creado_por_id: ctx.sello.creado_por_id,
   });
 
+  await auditar(ctx, {
+    accion: ACCIONES.CREAR,
+    entidad: 'ObservacionModulo',
+    entidad_id: observacion._id,
+    entidad_nombre: observacion.texto?.slice(0, 80),
+    contexto: { categoria_id: modulo.categoria_id, modulo_id: moduloId },
+  });
+
   if (esEmpresa(ctx)) {
     await notificacionesService.crear(
       ctx.tenant_id,
@@ -47,7 +58,34 @@ async function removeModuleObservation(ctx, moduloId, obsId) {
   if (!modulo) {
     throw new Error('Módulo no encontrado');
   }
-  return ObservacionModulo.findOneAndDelete({ _id: obsId, modulo_id: moduloId });
+  const previa = await ObservacionModulo.findOne({ _id: obsId, modulo_id: moduloId, eliminado_at: null });
+
+  // Borrar la observación ajena queda para administradores: es una herramienta
+  // de moderación, no parte del trabajo diario.
+  exigir(
+    ctx.puedeEliminar(previa ?? {}),
+    'Solo quien escribió esta observación o un administrador puede eliminarla'
+  );
+
+  const observacion = await ObservacionModulo.findOneAndUpdate(
+    { _id: obsId, modulo_id: moduloId, eliminado_at: null },
+    { eliminado_at: new Date() },
+    { new: true }
+  );
+
+  if (observacion) {
+    await auditar(ctx, {
+      accion: ACCIONES.ELIMINAR,
+      entidad: 'ObservacionModulo',
+      entidad_id: observacion._id,
+      entidad_nombre: observacion.texto?.slice(0, 80),
+      contexto: { categoria_id: modulo.categoria_id, modulo_id: moduloId },
+      // El texto queda en el log: es el contenido que ya no se verá en pantalla.
+      snapshot: { texto: observacion.texto, creado_por: observacion.creado_por },
+    });
+  }
+
+  return observacion;
 }
 
 async function editModuleObservation(ctx, moduloId, obsId, texto) {
@@ -58,11 +96,36 @@ async function editModuleObservation(ctx, moduloId, obsId, texto) {
   if (!modulo) {
     throw new Error('Módulo no encontrado');
   }
-  return ObservacionModulo.findOneAndUpdate(
-    { _id: obsId, modulo_id: moduloId },
+  const previa = await ObservacionModulo.findOne({ _id: obsId, modulo_id: moduloId, eliminado_at: null });
+
+  // Editar el comentario de otra persona es reescribir lo que dijo: no lo puede
+  // hacer nadie, ni un administrador. Quien necesite corregir algo ajeno que
+  // añada su propia observación.
+  exigir(
+    previa && idsIguales(previa.creado_por_id, ctx.actor_id),
+    'Solo puedes editar tus propias observaciones'
+  );
+
+  const observacion = await ObservacionModulo.findOneAndUpdate(
+    { _id: obsId, modulo_id: moduloId, eliminado_at: null },
     { texto: texto.trim() },
     { new: true }
   );
+
+  if (observacion) {
+    await auditar(ctx, {
+      accion: ACCIONES.EDITAR,
+      entidad: 'ObservacionModulo',
+      entidad_id: observacion._id,
+      entidad_nombre: observacion.texto?.slice(0, 80),
+      contexto: { categoria_id: modulo.categoria_id, modulo_id: moduloId },
+      // Editar el comentario de otro es lo más delicado del tablero: se guarda
+      // el texto original para poder contrastar.
+      cambios: [{ campo: 'Texto', antes: previa?.texto ?? null, despues: observacion.texto }],
+    });
+  }
+
+  return observacion;
 }
 
 async function addReqObservation(ctx, requerimientoId, texto) {
@@ -79,6 +142,14 @@ async function addReqObservation(ctx, requerimientoId, texto) {
     texto,
     creado_por: ctx.creado_por ?? null,
     creado_por_id: ctx.sello.creado_por_id,
+  });
+
+  await auditar(ctx, {
+    accion: ACCIONES.CREAR,
+    entidad: 'ObservacionRequerimiento',
+    entidad_id: observacion._id,
+    entidad_nombre: observacion.texto?.slice(0, 80),
+    contexto: { modulo_id: requerimiento.modulo_id },
   });
 
   if (esEmpresa(ctx)) {
@@ -99,7 +170,33 @@ async function removeReqObservation(ctx, requerimientoId, obsId) {
   if (!requerimiento) {
     throw new Error('Requerimiento no encontrado');
   }
-  return ObservacionRequerimiento.findOneAndDelete({ _id: obsId, requerimiento_id: requerimientoId });
+  const previa = await ObservacionRequerimiento.findOne({ _id: obsId, requerimiento_id: requerimientoId, eliminado_at: null });
+
+  // Borrar la observación ajena queda para administradores: es una herramienta
+  // de moderación, no parte del trabajo diario.
+  exigir(
+    ctx.puedeEliminar(previa ?? {}),
+    'Solo quien escribió esta observación o un administrador puede eliminarla'
+  );
+
+  const observacion = await ObservacionRequerimiento.findOneAndUpdate(
+    { _id: obsId, requerimiento_id: requerimientoId, eliminado_at: null },
+    { eliminado_at: new Date() },
+    { new: true }
+  );
+
+  if (observacion) {
+    await auditar(ctx, {
+      accion: ACCIONES.ELIMINAR,
+      entidad: 'ObservacionRequerimiento',
+      entidad_id: observacion._id,
+      entidad_nombre: observacion.texto?.slice(0, 80),
+      contexto: { modulo_id: requerimiento.modulo_id },
+      snapshot: { texto: observacion.texto, creado_por: observacion.creado_por },
+    });
+  }
+
+  return observacion;
 }
 
 async function editReqObservation(ctx, requerimientoId, obsId, texto) {
@@ -110,11 +207,34 @@ async function editReqObservation(ctx, requerimientoId, obsId, texto) {
   if (!requerimiento) {
     throw new Error('Requerimiento no encontrado');
   }
-  return ObservacionRequerimiento.findOneAndUpdate(
-    { _id: obsId, requerimiento_id: requerimientoId },
+  const previa = await ObservacionRequerimiento.findOne({ _id: obsId, requerimiento_id: requerimientoId, eliminado_at: null });
+
+  // Editar el comentario de otra persona es reescribir lo que dijo: no lo puede
+  // hacer nadie, ni un administrador. Quien necesite corregir algo ajeno que
+  // añada su propia observación.
+  exigir(
+    previa && idsIguales(previa.creado_por_id, ctx.actor_id),
+    'Solo puedes editar tus propias observaciones'
+  );
+
+  const observacion = await ObservacionRequerimiento.findOneAndUpdate(
+    { _id: obsId, requerimiento_id: requerimientoId, eliminado_at: null },
     { texto: texto.trim() },
     { new: true }
   );
+
+  if (observacion) {
+    await auditar(ctx, {
+      accion: ACCIONES.EDITAR,
+      entidad: 'ObservacionRequerimiento',
+      entidad_id: observacion._id,
+      entidad_nombre: observacion.texto?.slice(0, 80),
+      contexto: { modulo_id: requerimiento.modulo_id },
+      cambios: [{ campo: 'Texto', antes: previa?.texto ?? null, despues: observacion.texto }],
+    });
+  }
+
+  return observacion;
 }
 
 module.exports = {

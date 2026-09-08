@@ -2,27 +2,41 @@ const Visto = require('../models/Visto');
 const Usuario = require('../models/Usuario');
 const Requerimiento = require('../models/Requerimiento');
 const idsIguales = require('../utils/idsIguales');
+const { auditarDesdeReq, ACCIONES } = require('./auditoria.services');
 
 const MODELOS = { Requerimiento };
 
 // Confirma (acuse de recibo) que el usuario vio una categoría/módulo de empresa.
 // Valida que la entidad exista en el tenant y en ámbito empresa. Idempotente.
-async function marcarVisto(tenantId, usuarioId, entidad, entidadId) {
+async function marcarVisto(tenantId, usuarioId, entidad, entidadId, req = null) {
   const Model = MODELOS[entidad];
   if (!Model) throw new Error('Entidad no válida');
 
-  const doc = await Model.findOne({ _id: entidadId, tenant_id: tenantId, ambito: 'empresa' }).select('creado_por_id');
+  const doc = await Model.findOne({ _id: entidadId, tenant_id: tenantId, ambito: 'empresa' }).select('creado_por_id texto modulo_id');
   if (!doc) throw new Error('No encontrado');
   // El creador no confirma lo suyo.
   if (doc.creado_por_id && idsIguales(doc.creado_por_id, usuarioId)) {
     return { yaEra: true };
   }
 
-  await Visto.updateOne(
+  const resultado = await Visto.updateOne(
     { entidad, entidad_id: entidadId, usuario_id: usuarioId },
     { $setOnInsert: { tenant_id: tenantId, entidad, entidad_id: entidadId, usuario_id: usuarioId } },
     { upsert: true }
   );
+
+  // Solo se audita la PRIMERA confirmación: repetir el clic no es un hecho nuevo
+  // y llenaría el log de duplicados.
+  if (req && resultado.upsertedCount > 0) {
+    await auditarDesdeReq(req, {
+      accion: ACCIONES.MARCAR_VISTO,
+      entidad,
+      entidad_id: entidadId,
+      entidad_nombre: doc.texto ?? null,
+      contexto: { modulo_id: doc.modulo_id ?? null },
+    });
+  }
+
   return { visto: true };
 }
 

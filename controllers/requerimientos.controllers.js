@@ -7,7 +7,7 @@ async function create(req, res) {
     res.status(201).json(requerimiento);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de módulo inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -18,7 +18,7 @@ async function update(req, res) {
     res.json(requerimiento);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de requerimiento inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -29,7 +29,7 @@ async function remove(req, res) {
     res.json({ message: 'Requerimiento eliminado' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de requerimiento inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -38,7 +38,7 @@ async function reorder(req, res) {
     const requerimientos = await requerimientosService.reorder(filtroAmbito(req), req.params.moduloId, req.body.orderedIds);
     res.json(requerimientos);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -50,7 +50,7 @@ async function toggleCompletado(req, res) {
     res.json(requerimiento);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de requerimiento inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -64,7 +64,7 @@ async function addAdjunto(req, res) {
     res.status(201).json(requerimiento);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de requerimiento inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -75,7 +75,7 @@ async function removeAdjunto(req, res) {
     res.json(requerimiento);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

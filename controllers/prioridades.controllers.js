@@ -15,7 +15,7 @@ async function create(req, res) {
     const prioridad = await prioridadesService.create(filtroAmbito(req), req.body);
     res.status(201).json(prioridad);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -26,7 +26,7 @@ async function update(req, res) {
     res.json(prioridad);
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de prioridad inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -37,7 +37,7 @@ async function remove(req, res) {
     res.json({ message: 'Prioridad eliminada' });
   } catch (error) {
     if (error.name === 'CastError') return res.status(400).json({ message: 'ID de prioridad inválido' });
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 
@@ -46,7 +46,7 @@ async function reorder(req, res) {
     const prioridades = await prioridadesService.reorder(filtroAmbito(req), req.body.orderedIds);
     res.json(prioridades);
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    res.status(error.status ?? 400).json({ message: error.message });
   }
 }
 

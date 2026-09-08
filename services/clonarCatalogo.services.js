@@ -1,6 +1,7 @@
 const Estado = require('../models/Estado');
 const Prioridad = require('../models/Prioridad');
 const Tipo = require('../models/Tipo');
+const { auditar, ACCIONES } = require('./auditoria.services');
 
 /**
  * Clona los catálogos de la empresa (estados, prioridades, tipos) al ámbito
@@ -42,12 +43,37 @@ async function clonarModelo(Model, tenantId, ownerId) {
  * Garantiza que el usuario tenga sus catálogos personales. Se llama al entrar al
  * tablero personal. Devuelve cuántos documentos se clonaron (0 si ya existían).
  */
-async function asegurarCatalogoPersonal(tenantId, ownerId) {
+async function asegurarCatalogoPersonal(tenantId, ownerId, actor = null) {
   const [estados, prioridades, tipos] = await Promise.all([
     clonarModelo(Estado, tenantId, ownerId),
     clonarModelo(Prioridad, tenantId, ownerId),
     clonarModelo(Tipo, tenantId, ownerId),
   ]);
+
+  const total = estados + prioridades + tipos;
+  // Una sola entrada de resumen. Auditar los ~14 documentos por separado llenaría
+  // el log de líneas idénticas en el mismo segundo por algo que hizo el sistema,
+  // no la persona: solo entró a su tablero por primera vez.
+  if (total > 0) {
+    await auditar(
+      {
+        tenant_id: tenantId,
+        ambito: 'personal',
+        owner_id: ownerId,
+        actor_id: actor?.usuario_id ?? ownerId,
+        creado_por: actor?.usuario_nombre ?? null,
+        actor_rol: actor?.usuario_rol ?? null,
+      },
+      {
+        accion: ACCIONES.INICIALIZAR_TABLERO,
+        entidad: 'TableroPersonal',
+        entidad_id: ownerId,
+        entidad_nombre: 'Tablero personal',
+        snapshot: { estados, prioridades, tipos },
+      }
+    );
+  }
+
   return { estados, prioridades, tipos };
 }
 

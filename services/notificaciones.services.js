@@ -37,7 +37,7 @@ async function resolverDestino(tenantId, entidad, entidadId) {
   }
 
   if (entidad === 'ObservacionModulo') {
-    const observacion = await ObservacionModulo.findById(entidadId);
+    const observacion = await ObservacionModulo.findOne({ _id: entidadId, eliminado_at: null });
     if (!observacion) return null;
     const modulo = await Modulo.findOne({ _id: observacion.modulo_id, tenant_id: tenantId, eliminado_at: null });
     if (!modulo) return null;
@@ -45,7 +45,7 @@ async function resolverDestino(tenantId, entidad, entidadId) {
   }
 
   if (entidad === 'ObservacionRequerimiento') {
-    const observacion = await ObservacionRequerimiento.findById(entidadId);
+    const observacion = await ObservacionRequerimiento.findOne({ _id: entidadId, eliminado_at: null });
     if (!observacion) return null;
     const requerimiento = await Requerimiento.findOne({ _id: observacion.requerimiento_id, tenant_id: tenantId, eliminado_at: null });
     if (!requerimiento) return null;

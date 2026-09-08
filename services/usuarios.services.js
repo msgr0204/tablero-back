@@ -25,6 +25,11 @@ async function getAll(tenantId) {
   return Usuario.find({ tenant_id: tenantId }).select('-password').sort({ created_at: 1 });
 }
 
+// Lectura puntual para que la auditoría pueda comparar contra el estado previo.
+async function getById(tenantId, id) {
+  return Usuario.findOne({ _id: id, tenant_id: tenantId }).select('-password').lean();
+}
+
 async function create(tenantId, payload) {
   const { nombre, email, password, rol } = payload;
   if (!nombre || !nombre.trim()) {
@@ -115,4 +120,4 @@ async function remove(tenantId, id, usuarioActualId) {
   return Usuario.findByIdAndDelete(id);
 }
 
-module.exports = { getAll, create, update, remove };
+module.exports = { getAll, getById, create, update, remove };
